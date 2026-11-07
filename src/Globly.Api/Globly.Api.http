@@ -1,0 +1,50 @@
+@host = http://localhost:5021
+@token = paste-token-from-login
+
+### Register
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{ "userName": "alice", "password": "password123" }
+
+### Login
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "userName": "alice", "password": "password123" }
+
+### Create a text post
+POST {{host}}/api/posts
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=b
+
+--b
+Content-Disposition: form-data; name="title"
+
+Hello from Riga
+--b
+Content-Disposition: form-data; name="description"
+
+First post!
+--b
+Content-Disposition: form-data; name="mediaType"
+
+Text
+--b
+Content-Disposition: form-data; name="latitude"
+
+56.9496
+--b
+Content-Disposition: form-data; name="longitude"
+
+24.1052
+--b--
+
+### Map points for the Baltics
+GET {{host}}/api/posts/map?minLat=53&minLng=20&maxLat=60&maxLng=29&zoom=6
+
+### Nearby
+GET {{host}}/api/posts/nearby?lat=56.95&lng=24.1&radiusKm=50
+
+### Feed (images and videos only)
+GET {{host}}/api/posts/feed?types=Image&types=Video

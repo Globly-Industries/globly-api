@@ -1,0 +1,68 @@
+# Globly infrastructure.
+#
+#   Development (this PC):   docker compose up -d db
+#   Server (Docker Desktop): docker compose --profile prod up -d --build
+#
+# The server reads secrets from a .env file next to this one (copy .env.example).
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: globly
+      POSTGRES_USER: globly
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-globly_dev}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U globly -d globly"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [globly]
+
+  api:
+    profiles: ["prod"]
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: Host=db;Port=5432;Database=globly;Username=globly;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env}
+      Storage__Provider: R2
+      Storage__R2__AccountId: ${R2_ACCOUNT_ID:?set R2_ACCOUNT_ID in .env}
+      Storage__R2__AccessKeyId: ${R2_ACCESS_KEY_ID:?set R2_ACCESS_KEY_ID in .env}
+      Storage__R2__SecretAccessKey: ${R2_SECRET_ACCESS_KEY:?set R2_SECRET_ACCESS_KEY in .env}
+      Storage__R2__Bucket: ${R2_BUCKET:-globly-media}
+      Admin__UserName: ${ADMIN_USERNAME:-}
+      Admin__Password: ${ADMIN_PASSWORD:-}
+      # cloudflared reaches the API over this network; trust its CF-Connecting-IP header.
+      ReverseProxy__KnownNetworks__0: 172.30.0.0/24
+    ports:
+      # For checking on the server itself: http://localhost:5021/health
+      - "127.0.0.1:5021:8080"
+    networks: [globly]
+
+  cloudflared:
+    profiles: ["prod"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on: [api]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
+    networks: [globly]
+
+networks:
+  globly:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+volumes:
+  pgdata:

@@ -73,3 +73,12 @@ _[Ss]cripts
 *.nupkg
 *.ncrunchsolution
 *.dot[Cc]over
+
+####################
+# Globly           #
+####################
+.vs/
+*.user
+.env
+# Local media storage used in development
+src/Globly.Api/media/
