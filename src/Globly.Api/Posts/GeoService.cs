@@ -53,6 +53,7 @@ public class GeoService(AppDbContext db)
                    (array_agg(p."Title"))[1] AS "Title"
             FROM "Posts" p
             WHERE p."Location" && ST_MakeEnvelope({minLng}, {minLat}, {maxLng}, {maxLat}, 4326)
+              AND NOT p."IsHidden"
               AND (cardinality({types}) = 0 OR p."MediaType" = ANY({types}))
               AND p."CreatedAt" >= {since}
               AND (p."Upvotes" - p."Downvotes") >= {minScore}
@@ -74,7 +75,8 @@ public class GeoService(AppDbContext db)
         return db.Posts
             .FromSql($"""
                 SELECT * FROM "Posts"
-                WHERE ST_DWithin("Location"::geography, ST_SetSRID(ST_MakePoint({lng}, {lat}), 4326)::geography, {meters})
+                WHERE NOT "IsHidden"
+                  AND ST_DWithin("Location"::geography, ST_SetSRID(ST_MakePoint({lng}, {lat}), 4326)::geography, {meters})
                 """)
             .OrderBy(p => p.Location.Distance(origin));
     }

@@ -86,12 +86,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 // ---------- Rate limiting (per real client IP) ----------
+var authPerMinute = config.GetValue("RateLimit:AuthPerMinute", 10);
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddPolicy("auth", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
 });
 
 // ---------- Modules ----------
@@ -104,6 +105,9 @@ else
     builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
 
 builder.Services.AddSingleton<IContentModerator, RuleBasedContentModerator>();
+builder.Services.AddScoped<CommunityModeration>();
+builder.Services.Configure<TurnstileOptions>(config.GetSection(TurnstileOptions.Section));
+builder.Services.AddHttpClient<TurnstileVerifier>(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<GeoService>();
 

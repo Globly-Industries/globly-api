@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Globly.Api.Auth;
+using Globly.Api.Common;
 using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Moderation;
@@ -7,25 +8,28 @@ using Globly.Api.Posts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Globly.Api.Ratings;
 
 public record VoteRequest([Range(-1, 1)] int Value);
-public record VoteResult(int Upvotes, int Downvotes, int MyVote);
+public record VoteResult(int Upvotes, int Downvotes, int MyVote, bool IsHidden);
 
 public record CreateCommentRequest([StringLength(1000)] string? Body, [StringLength(16)] string? Emoji);
 public record CommentDto(Guid Id, Guid PostId, AuthorDto Author, string? Body, string? Emoji, DateTime CreatedAt);
 public record EmojiCount(string Emoji, int Count);
 
 public record ReportRequest([StringLength(500)] string? Reason);
+public record ReportResult(bool IsHidden);
 
 public enum CommentKind { All, Text, Emoji }
 
-/// <summary>Publication rating module: votes, comments, emoji and "needs manual moderation" reports.</summary>
+/// <summary>
+/// Publication rating module: votes, comments, emoji and "needs manual moderation" reports.
+/// Votes and reports feed <see cref="CommunityModeration"/>, which hides posts the community rejects.
+/// </summary>
 [ApiController]
 [Route("api")]
-public class RatingsController(AppDbContext db, IContentModerator moderator, IOptions<ModerationOptions> modOptions) : ControllerBase
+public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community) : ControllerBase
 {
     /// <summary>Set your vote: 1 = up, -1 = down, 0 = remove.</summary>
     [Authorize]
@@ -33,7 +37,7 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, IOp
     public async Task<ActionResult<VoteResult>> Vote(Guid postId, VoteRequest req, CancellationToken ct)
     {
         var userId = User.RequireUserId();
-        if (!await db.Posts.AnyAsync(p => p.Id == postId, ct)) return NotFound();
+        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
 
         var vote = await db.PostVotes.FindAsync([postId, userId], ct);
         if (req.Value == 0)
@@ -49,15 +53,11 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, IOp
             vote.Value = (short)req.Value;
         }
         await db.SaveChangesAsync(ct);
+        await community.ReevaluateAsync(postId, ct);
 
-        // Recount from the votes table so concurrent votes can't drift the totals.
-        await db.Posts.Where(p => p.Id == postId).ExecuteUpdateAsync(s => s
-            .SetProperty(p => p.Upvotes, p => db.PostVotes.Count(v => v.PostId == postId && v.Value > 0))
-            .SetProperty(p => p.Downvotes, p => db.PostVotes.Count(v => v.PostId == postId && v.Value < 0)), ct);
-
-        var counts = await db.Posts.Where(p => p.Id == postId)
-            .Select(p => new { p.Upvotes, p.Downvotes }).SingleAsync(ct);
-        return new VoteResult(counts.Upvotes, counts.Downvotes, req.Value);
+        var post = await db.Posts.AsNoTracking().Where(p => p.Id == postId)
+            .Select(p => new { p.Upvotes, p.Downvotes, p.IsHidden }).SingleAsync(ct);
+        return new VoteResult(post.Upvotes, post.Downvotes, req.Value, post.IsHidden);
     }
 
     /// <summary>Comments of a post, newest first. Filter by kind (text comments only / emoji only).</summary>
@@ -69,6 +69,8 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, IOp
         [Range(1, 100)] int pageSize = 30,
         CancellationToken ct = default)
     {
+        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
+
         var q = db.Comments.Where(c => c.PostId == postId);
         q = kind switch
         {
@@ -90,11 +92,15 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, IOp
     /// <summary>Emoji totals for a post, most used first.</summary>
     [HttpGet("posts/{postId:guid}/emoji")]
     public async Task<ActionResult<List<EmojiCount>>> GetEmojiSummary(Guid postId, CancellationToken ct)
-        => await db.Comments.Where(c => c.PostId == postId && c.Emoji != null)
+    {
+        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
+
+        return await db.Comments.Where(c => c.PostId == postId && c.Emoji != null)
             .GroupBy(c => c.Emoji!)
             .OrderByDescending(g => g.Count())
             .Select(g => new EmojiCount(g.Key, g.Count()))
             .ToListAsync(ct);
+    }
 
     [Authorize]
     [HttpPost("posts/{postId:guid}/comments")]
@@ -103,12 +109,12 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, IOp
         var body = string.IsNullOrWhiteSpace(req.Body) ? null : req.Body.Trim();
         var emoji = string.IsNullOrWhiteSpace(req.Emoji) ? null : req.Emoji.Trim();
         if (body is null && emoji is null)
-            return Problem("A comment needs text or an emoji.", statusCode: StatusCodes.Status400BadRequest);
+            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.CommentEmpty, "A comment needs text or an emoji.");
 
         var check = moderator.CheckText(null, body);
-        if (!check.Allowed) return Problem(check.Reason, statusCode: StatusCodes.Status422UnprocessableEntity);
+        if (!check.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, check.Code!, check.Reason!);
 
-        if (!await db.Posts.AnyAsync(p => p.Id == postId, ct)) return NotFound();
+        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
 
         var userId = User.RequireUserId();
         var comment = new Comment { PostId = postId, UserId = userId, Body = body, Emoji = emoji };
@@ -131,25 +137,34 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, IOp
         return NoContent();
     }
 
-    /// <summary>Vote for a manual moderation check. Enough votes flag the post for admins.</summary>
+    /// <summary>
+    /// Vote for a manual moderation check. Once enough users report a post it is hidden
+    /// automatically and waits for an admin.
+    /// </summary>
     [Authorize]
     [HttpPost("posts/{postId:guid}/report")]
-    public async Task<IActionResult> Report(Guid postId, ReportRequest req, CancellationToken ct)
+    public async Task<ActionResult<ReportResult>> Report(Guid postId, ReportRequest req, CancellationToken ct)
     {
         var userId = User.RequireUserId();
-        if (!await db.Posts.AnyAsync(p => p.Id == postId, ct)) return NotFound();
+        var post = await FindVisibleAsync(postId, ct);
+        if (post is null) return NotFound();
+        if (post.UserId == userId) return Forbid();
 
         if (await db.PostReports.FindAsync([postId, userId], ct) is null)
         {
             db.PostReports.Add(new PostReport { PostId = postId, UserId = userId, Reason = req.Reason?.Trim() });
             await db.SaveChangesAsync(ct);
+            await community.ReevaluateAsync(postId, ct);
         }
 
-        var threshold = modOptions.Value.ReportThreshold;
-        await db.Posts.Where(p => p.Id == postId).ExecuteUpdateAsync(s => s
-            .SetProperty(p => p.ReportCount, p => db.PostReports.Count(r => r.PostId == postId))
-            .SetProperty(p => p.IsFlagged, p => p.IsFlagged || db.PostReports.Count(r => r.PostId == postId) >= threshold), ct);
+        var hidden = await db.Posts.Where(p => p.Id == postId).Select(p => p.IsHidden).SingleAsync(ct);
+        return new ReportResult(hidden);
+    }
 
-        return NoContent();
+    /// <summary>The post if the caller may see it (hidden posts only for author/admins), otherwise null.</summary>
+    private async Task<Post?> FindVisibleAsync(Guid postId, CancellationToken ct)
+    {
+        var post = await db.Posts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == postId, ct);
+        return post is not null && PostService.CanSee(post, User.GetUserId(), User.IsInRole(Roles.Admin)) ? post : null;
     }
 }

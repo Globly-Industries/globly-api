@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Globly.Api.Auth;
+using Globly.Api.Common;
 using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Posts;
@@ -19,17 +20,20 @@ public record ReportDto(string UserId, string? UserName, string? Reason, DateTim
 [Authorize(Roles = Roles.Admin)]
 public class AdminController(AppDbContext db, PostService posts, UserManager<AppUser> users) : ControllerBase
 {
-    /// <summary>Posts for review. By default only those flagged by user reports, most reported first.</summary>
+    /// <summary>
+    /// Moderation queue. By default only hidden posts (hidden by community moderation or an admin),
+    /// most reported first. With hiddenOnly=false: all posts, newest first.
+    /// </summary>
     [HttpGet("posts")]
     public async Task<ActionResult<PagedResult<PostDto>>> GetPosts(
-        bool flaggedOnly = true,
+        bool hiddenOnly = true,
         [Range(1, int.MaxValue)] int page = 1,
         [Range(1, 100)] int pageSize = 30,
         CancellationToken ct = default)
     {
         IQueryable<Post> q = db.Posts;
-        q = flaggedOnly
-            ? q.Where(p => p.IsFlagged).OrderByDescending(p => p.ReportCount).ThenByDescending(p => p.CreatedAt)
+        q = hiddenOnly
+            ? q.Where(p => p.IsHidden).OrderByDescending(p => p.ReportCount).ThenByDescending(p => p.HiddenAt)
             : q.OrderByDescending(p => p.CreatedAt);
 
         var items = await posts.ToDtosAsync(q.Skip((page - 1) * pageSize).Take(pageSize + 1), User.GetUserId(), ct);
@@ -45,16 +49,34 @@ public class AdminController(AppDbContext db, PostService posts, UserManager<App
             .Select(r => new ReportDto(r.UserId, db.Users.Where(u => u.Id == r.UserId).Select(u => u.UserName).FirstOrDefault(), r.Reason, r.CreatedAt))
             .ToListAsync(ct);
 
-    /// <summary>Post reviewed and found acceptable: clear its reports and remove the flag.</summary>
-    [HttpPost("posts/{id:guid}/dismiss-reports")]
-    public async Task<IActionResult> DismissReports(Guid id, CancellationToken ct)
+    /// <summary>
+    /// Post reviewed and found acceptable: make it visible again, clear its reports, and stop the
+    /// downvote rule from hiding it again. New reports can still hide it.
+    /// </summary>
+    [HttpPost("posts/{id:guid}/restore")]
+    public async Task<IActionResult> Restore(Guid id, CancellationToken ct)
     {
         if (!await db.Posts.AnyAsync(p => p.Id == id, ct)) return NotFound();
 
         await db.PostReports.Where(r => r.PostId == id).ExecuteDeleteAsync(ct);
-        await db.Posts.Where(p => p.Id == id)
-            .ExecuteUpdateAsync(s => s.SetProperty(p => p.ReportCount, 0).SetProperty(p => p.IsFlagged, false), ct);
+        await db.Posts.Where(p => p.Id == id).ExecuteUpdateAsync(s => s
+            .SetProperty(p => p.ReportCount, 0)
+            .SetProperty(p => p.IsHidden, false)
+            .SetProperty(p => p.HiddenReason, HiddenReason.None)
+            .SetProperty(p => p.HiddenAt, (DateTime?)null)
+            .SetProperty(p => p.ModeratorApproved, true), ct);
         return NoContent();
+    }
+
+    /// <summary>Hide a post manually (it stays in the queue until restored or deleted).</summary>
+    [HttpPost("posts/{id:guid}/hide")]
+    public async Task<IActionResult> Hide(Guid id, CancellationToken ct)
+    {
+        var updated = await db.Posts.Where(p => p.Id == id).ExecuteUpdateAsync(s => s
+            .SetProperty(p => p.IsHidden, true)
+            .SetProperty(p => p.HiddenReason, HiddenReason.Admin)
+            .SetProperty(p => p.HiddenAt, DateTime.UtcNow), ct);
+        return updated == 0 ? NotFound() : NoContent();
     }
 
     [HttpDelete("posts/{id:guid}")]
@@ -102,7 +124,7 @@ public class AdminController(AppDbContext db, PostService posts, UserManager<App
     public async Task<IActionResult> DeleteUser(string id, CancellationToken ct)
     {
         if (id == User.GetUserId())
-            return Problem("You cannot delete your own account here.", statusCode: StatusCodes.Status400BadRequest);
+            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.CannotDeleteSelf, "You cannot delete your own account here.");
 
         var user = await users.FindByIdAsync(id);
         if (user is null) return NotFound();

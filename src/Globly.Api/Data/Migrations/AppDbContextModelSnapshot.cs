@@ -178,7 +178,13 @@ namespace Globly.Api.Data.Migrations
                     b.Property<Guid?>("FileId")
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("IsFlagged")
+                    b.Property<DateTime?>("HiddenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("HiddenReason")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsHidden")
                         .HasColumnType("boolean");
 
                     b.Property<Point>("Location")
@@ -187,6 +193,9 @@ namespace Globly.Api.Data.Migrations
 
                     b.Property<int>("MediaType")
                         .HasColumnType("integer");
+
+                    b.Property<bool>("ModeratorApproved")
+                        .HasColumnType("boolean");
 
                     b.Property<int>("ReportCount")
                         .HasColumnType("integer");
@@ -215,7 +224,7 @@ namespace Globly.Api.Data.Migrations
 
                     b.HasIndex("FileId");
 
-                    b.HasIndex("IsFlagged");
+                    b.HasIndex("IsHidden");
 
                     b.HasIndex("Location");
 

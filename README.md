@@ -73,7 +73,30 @@ Logs: `docker compose logs -f api`. Data lives in the `pgdata` Docker volume and
   not on the same host/loopback, add its network to `ReverseProxy:KnownNetworks`.
 - **Media reads** go straight from the app to R2, never through the tunnel.
 
-### Web demo (Flutter web on Cloudflare Pages)
+### Human check at registration (Cloudflare Turnstile)
+Off until both keys are set, so it never blocks anything by accident.
+1. Cloudflare dashboard -> **Turnstile -> Add widget**: name `Globly`, hostname `globly.dagnis.my.id`,
+   widget mode **Managed**.
+2. Put the keys in the server's `.env`: `TURNSTILE_SITE_KEY=...` and `TURNSTILE_SECRET_KEY=...`,
+   then `docker compose --profile prod up -d`.
+
+The app asks `GET /api/auth/config` for the site key, so no app rebuild is needed. Development uses
+Cloudflare's always-pass test keys (`appsettings.Development.json`).
+
+## Community moderation
+Posts are hidden automatically (gone from map, feed and nearby; the author and admins still see them,
+with the reason) when either rule is met:
+- `Moderation:ReportThreshold` (default 5) different users report the post, or
+- it has at least `DownvoteHideMinVotes` (10) votes and `DownvoteHidePercent` (80%) or more are downvotes.
+
+Hidden posts wait in the admin queue (`GET /api/admin/posts`). **Restore** makes the post visible again,
+clears its reports and stops the downvote rule from hiding it again (new reports still count).
+**Delete** removes it with its media. Admins can also hide a post manually.
+
+Errors carry a machine-readable `code` (e.g. `username_taken`, `captcha_failed`) next to the English
+`detail`, so the app can show them in the user's language.
+
+### Web demo (Flutter web on Cloudflare, globly.dagnis.my.id)
 - **API CORS:** browsers may call the API only from origins listed in `Cors:AllowedOrigins`
   (default `https://globly.dagnis.my.id`). In Development any `localhost` origin is allowed.
 - **R2 CORS:** Flutter web loads images with fetch requests, so the bucket must allow the site too.
@@ -94,7 +117,8 @@ Logs: `docker compose logs -f api`. Data lives in the `pgdata` Docker volume and
 
 | Method | Route | Auth |
 |---|---|---|
-| POST | `/api/auth/register`, `/api/auth/login` | – |
+| GET | `/api/auth/config` (Turnstile site key or null) | – |
+| POST | `/api/auth/register` (+ `captchaToken` when Turnstile is on), `/api/auth/login` | – |
 | GET | `/api/auth/me` | user |
 | GET | `/api/posts/map?minLat&minLng&maxLat&maxLng&zoom[&types&since&minScore]` | – |
 | GET | `/api/posts/nearby?lat&lng[&radiusKm&limit]` | – |
@@ -108,7 +132,7 @@ Logs: `docker compose logs -f api`. Data lives in the `pgdata` Docker volume and
 | GET | `/api/posts/{id}/emoji` | – |
 | DELETE | `/api/comments/{id}` | author or admin |
 | POST | `/api/posts/{id}/report` | user |
-| GET | `/api/admin/posts?flaggedOnly`, `/api/admin/posts/{id}/reports`, `/api/admin/users` | admin |
-| POST | `/api/admin/posts/{id}/dismiss-reports` | admin |
+| GET | `/api/admin/posts?hiddenOnly`, `/api/admin/posts/{id}/reports`, `/api/admin/users` | admin |
+| POST | `/api/admin/posts/{id}/restore`, `/api/admin/posts/{id}/hide` | admin |
 | DELETE | `/api/admin/posts/{id}`, `/api/admin/users/{id}` | admin |
 | GET | `/health` | – |

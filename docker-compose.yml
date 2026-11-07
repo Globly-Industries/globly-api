@@ -39,6 +39,9 @@ services:
       Storage__R2__AccessKeyId: ${R2_ACCESS_KEY_ID:?set R2_ACCESS_KEY_ID in .env}
       Storage__R2__SecretAccessKey: ${R2_SECRET_ACCESS_KEY:?set R2_SECRET_ACCESS_KEY in .env}
       Storage__R2__Bucket: ${R2_BUCKET:-globly-media}
+      Turnstile__SiteKey: ${TURNSTILE_SITE_KEY:-}
+      Turnstile__SecretKey: ${TURNSTILE_SECRET_KEY:-}
+      RateLimit__AuthPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
       Admin__UserName: ${ADMIN_USERNAME:-}
       Admin__Password: ${ADMIN_PASSWORD:-}
       # cloudflared reaches the API over this network; trust its CF-Connecting-IP header.

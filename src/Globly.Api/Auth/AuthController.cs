@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Globly.Api.Common;
 using Globly.Api.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -9,7 +10,12 @@ namespace Globly.Api.Auth;
 
 public record AuthRequest(
     [Required, StringLength(32, MinimumLength = 3)] string UserName,
-    [Required, StringLength(128, MinimumLength = 8)] string Password);
+    [Required, StringLength(128, MinimumLength = 8)] string Password,
+    /// <summary>Cloudflare Turnstile token. Required for registration when the human check is enabled.</summary>
+    [StringLength(4096)] string? CaptchaToken = null);
+
+/// <summary>Public settings the app needs before signing in.</summary>
+public record AuthConfigDto(string? CaptchaSiteKey);
 
 public record UserDto(string Id, string UserName, bool IsAdmin, DateTime CreatedAt);
 
@@ -19,13 +25,23 @@ public record AuthResponse(string Token, DateTime ExpiresAt, UserDto User);
 [ApiController]
 [Route("api/auth")]
 [EnableRateLimiting("auth")]
-public class AuthController(UserManager<AppUser> users, TokenService tokens) : ControllerBase
+public class AuthController(UserManager<AppUser> users, TokenService tokens, TurnstileVerifier turnstile,
+    Microsoft.Extensions.Options.IOptions<TurnstileOptions> turnstileOptions) : ControllerBase
 {
+    /// <summary>Tells the app whether to show the human check (and with which Turnstile site key).</summary>
+    [HttpGet("config")]
+    [DisableRateLimiting]
+    public AuthConfigDto Config() =>
+        new(turnstile.Enabled ? turnstileOptions.Value.SiteKey : null);
+
     [HttpPost("register")]
-    public async Task<ActionResult<AuthResponse>> Register(AuthRequest req)
+    public async Task<ActionResult<AuthResponse>> Register(AuthRequest req, CancellationToken ct)
     {
+        if (!await turnstile.VerifyAsync(req.CaptchaToken, HttpContext.Connection.RemoteIpAddress?.ToString(), ct))
+            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.CaptchaFailed, "Human verification failed. Please try again.");
+
         if (await users.FindByNameAsync(req.UserName) is not null)
-            return Problem("Username is already taken.", statusCode: StatusCodes.Status409Conflict);
+            return this.ProblemWithCode(StatusCodes.Status409Conflict, ErrorCodes.UsernameTaken, "Username is already taken.");
 
         var user = new AppUser { UserName = req.UserName };
         var result = await users.CreateAsync(user, req.Password);
@@ -40,15 +56,15 @@ public class AuthController(UserManager<AppUser> users, TokenService tokens) : C
     {
         var user = await users.FindByNameAsync(req.UserName);
         if (user is null)
-            return Problem("Incorrect username or password.", statusCode: StatusCodes.Status401Unauthorized);
+            return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ErrorCodes.InvalidCredentials, "Incorrect username or password.");
 
         if (await users.IsLockedOutAsync(user))
-            return Problem("Too many failed attempts. Try again later.", statusCode: StatusCodes.Status423Locked);
+            return this.ProblemWithCode(StatusCodes.Status423Locked, ErrorCodes.LockedOut, "Too many failed attempts. Try again later.");
 
         if (!await users.CheckPasswordAsync(user, req.Password))
         {
             await users.AccessFailedAsync(user);
-            return Problem("Incorrect username or password.", statusCode: StatusCodes.Status401Unauthorized);
+            return this.ProblemWithCode(StatusCodes.Status401Unauthorized, ErrorCodes.InvalidCredentials, "Incorrect username or password.");
         }
 
         await users.ResetAccessFailedCountAsync(user);

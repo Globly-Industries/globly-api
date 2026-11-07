@@ -25,7 +25,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(p => p.Location).HasColumnType("geometry(Point,4326)");
             e.HasIndex(p => p.Location).HasMethod("gist");
             e.HasIndex(p => p.CreatedAt);
-            e.HasIndex(p => p.IsFlagged);
+            e.HasIndex(p => p.IsHidden);
 
             e.HasOne(p => p.User).WithMany(u => u.Posts)
                 .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);

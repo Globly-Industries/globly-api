@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Globly.Api.Auth;
+using Globly.Api.Common;
 using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Moderation;
@@ -52,7 +53,7 @@ public class PostsController(
         [Range(1, MaxPageSize)] int pageSize = 20,
         CancellationToken ct = default)
     {
-        var q = PostService.ApplyFilter(db.Posts, f).OrderByDescending(p => p.CreatedAt);
+        var q = PostService.ApplyFilter(posts.Visible, f).OrderByDescending(p => p.CreatedAt);
         return await Page(q, page, pageSize, ct);
     }
 
@@ -72,9 +73,12 @@ public class PostsController(
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<PostDto>> Get(Guid id, CancellationToken ct)
     {
-        var updated = await db.Posts.Where(p => p.Id == id)
+        var post = await db.Posts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct);
+        if (post is null || !PostService.CanSee(post, User.GetUserId(), User.IsInRole(Roles.Admin)))
+            return NotFound();
+
+        await db.Posts.Where(p => p.Id == id)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.Views, p => p.Views + 1), ct);
-        if (updated == 0) return NotFound();
 
         return (await posts.GetDtoAsync(id, User.GetUserId(), ct))!;
     }
@@ -90,24 +94,24 @@ public class PostsController(
         var userId = User.RequireUserId();
 
         var textCheck = moderator.CheckText(form.Title, form.Description);
-        if (!textCheck.Allowed) return Problem(textCheck.Reason, statusCode: StatusCodes.Status422UnprocessableEntity);
+        if (!textCheck.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, textCheck.Code!, textCheck.Reason!);
 
         MediaFile? file = null;
         if (form.MediaType == MediaType.Text)
         {
             if (form.File is not null)
-                return Problem("Text posts cannot have a file.", statusCode: StatusCodes.Status400BadRequest);
+                return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.InvalidFile, "Text posts cannot have a file.");
             if (string.IsNullOrWhiteSpace(form.Description))
-                return Problem("Text posts need a description.", statusCode: StatusCodes.Status400BadRequest);
+                return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.TextRequired, "Text posts need a description.");
         }
         else
         {
             if (form.File is null)
-                return Problem($"{form.MediaType} posts need a file.", statusCode: StatusCodes.Status400BadRequest);
+                return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.FileRequired, $"{form.MediaType} posts need a file.");
 
             var contentType = ResolveContentType(form.File);
             var fileCheck = moderator.CheckFile(form.MediaType, contentType, form.File.Length);
-            if (!fileCheck.Allowed) return Problem(fileCheck.Reason, statusCode: StatusCodes.Status422UnprocessableEntity);
+            if (!fileCheck.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, fileCheck.Code!, fileCheck.Reason!);
 
             var ext = Path.GetExtension(form.File.FileName).ToLowerInvariant();
             if (ext.Length > 10) ext = "";
@@ -160,7 +164,7 @@ public class PostsController(
         if (!CanModify(post)) return Forbid();
 
         var check = moderator.CheckText(req.Title, req.Description);
-        if (!check.Allowed) return Problem(check.Reason, statusCode: StatusCodes.Status422UnprocessableEntity);
+        if (!check.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, check.Code!, check.Reason!);
 
         post.Title = req.Title.Trim();
         post.Description = req.Description?.Trim();

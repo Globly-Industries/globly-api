@@ -2,6 +2,17 @@ using NetTopologySuite.Geometries;
 
 namespace Globly.Api.Data.Entities;
 
+public enum HiddenReason
+{
+    None = 0,
+    /// <summary>Hidden automatically: too many user reports.</summary>
+    Reports = 1,
+    /// <summary>Hidden automatically: overwhelmingly downvoted.</summary>
+    Downvotes = 2,
+    /// <summary>Hidden by an administrator.</summary>
+    Admin = 3,
+}
+
 public enum MediaType
 {
     Text = 0,
@@ -37,8 +48,16 @@ public class Post
     /// <summary>Number of "needs manual moderation" votes from users.</summary>
     public int ReportCount { get; set; }
 
-    /// <summary>Set when ReportCount reaches the threshold; shows up in the admin queue.</summary>
-    public bool IsFlagged { get; set; }
+    /// <summary>
+    /// Hidden from the map and feed (visible only to the author and admins) and waiting in the
+    /// admin queue. Set automatically by community moderation or manually by an admin.
+    /// </summary>
+    public bool IsHidden { get; set; }
+    public HiddenReason HiddenReason { get; set; }
+    public DateTime? HiddenAt { get; set; }
+
+    /// <summary>An admin reviewed and restored this post; the downvote rule no longer hides it.</summary>
+    public bool ModeratorApproved { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

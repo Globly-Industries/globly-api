@@ -8,6 +8,13 @@ namespace Globly.Api.Posts;
 /// <summary>Content processing: shared queries, DTO mapping and deletion (DB + R2).</summary>
 public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostService> logger)
 {
+    /// <summary>Posts everyone may see (not hidden by moderation).</summary>
+    public IQueryable<Post> Visible => db.Posts.Where(p => !p.IsHidden);
+
+    /// <summary>Hidden posts are only shown to their author and admins.</summary>
+    public static bool CanSee(Post post, string? userId, bool isAdmin) =>
+        !post.IsHidden || isAdmin || post.UserId == userId;
+
     public static IQueryable<Post> ApplyFilter(IQueryable<Post> q, PostFilter? f)
     {
         if (f is null) return q;
@@ -43,7 +50,9 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             MyVote = currentUserId == null
                 ? 0
                 : db.PostVotes.Where(v => v.PostId == p.Id && v.UserId == currentUserId).Select(v => (int)v.Value).FirstOrDefault(),
-            p.IsFlagged,
+            p.ReportCount,
+            p.IsHidden,
+            p.HiddenReason,
             p.CreatedAt,
             p.UpdatedAt,
         }).ToListAsync(ct);
@@ -62,7 +71,9 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             r.Downvotes,
             r.CommentCount,
             r.MyVote,
-            r.IsFlagged,
+            r.ReportCount,
+            r.IsHidden,
+            r.HiddenReason,
             r.CreatedAt,
             r.UpdatedAt)).ToList();
     }

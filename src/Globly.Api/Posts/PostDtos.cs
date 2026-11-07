@@ -22,7 +22,10 @@ public record PostDto(
     int CommentCount,
     /// <summary>The caller's vote on this post: 1, -1 or 0 (always 0 for anonymous users).</summary>
     int MyVote,
-    bool IsFlagged,
+    int ReportCount,
+    /// <summary>Hidden by moderation. Only the author and admins ever receive hidden posts.</summary>
+    bool IsHidden,
+    HiddenReason HiddenReason,
     DateTime CreatedAt,
     DateTime? UpdatedAt);
 
