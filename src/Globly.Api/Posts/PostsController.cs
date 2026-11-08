@@ -19,6 +19,7 @@ public class PostsController(
     PostService posts,
     GeoService geo,
     IMediaStorage storage,
+    IMediaSanitizer sanitizer,
     IContentModerator moderator) : ControllerBase
 {
     private const int MaxPageSize = 50;
@@ -117,16 +118,30 @@ public class PostsController(
             if (ext.Length > 10) ext = "";
             var key = $"posts/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid():N}{ext}";
 
-            await using (var stream = form.File.OpenReadStream())
-                await storage.UploadAsync(key, stream, contentType, ct);
-
-            file = new MediaFile
+            // Only the cleaned copy is ever stored, so a failure here must stop the post.
+            SanitizedMedia clean;
+            try
             {
-                ObjectKey = key,
-                FileName = Path.GetFileName(form.File.FileName),
-                ContentType = contentType,
-                ContentLength = form.File.Length,
-            };
+                await using var stream = form.File.OpenReadStream();
+                clean = await sanitizer.SanitizeAsync(form.MediaType, contentType, stream, ct);
+            }
+            catch (MediaRejectedException ex)
+            {
+                return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.InvalidFile, ex.Message);
+            }
+
+            await using (clean)
+            {
+                await storage.UploadAsync(key, clean.Content, contentType, ct);
+
+                file = new MediaFile
+                {
+                    ObjectKey = key,
+                    FileName = Path.GetFileName(form.File.FileName),
+                    ContentType = contentType,
+                    ContentLength = clean.Length,
+                };
+            }
         }
 
         var post = new Post
@@ -137,6 +152,7 @@ public class PostsController(
             MediaType = form.MediaType,
             File = file,
             Location = GeoService.ToPoint(form.Latitude, form.Longitude),
+            LocationRadiusMeters = form.LocationRadiusMeters,
         };
         db.Posts.Add(post);
 

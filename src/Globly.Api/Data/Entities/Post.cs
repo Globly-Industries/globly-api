@@ -41,6 +41,12 @@ public class Post
     /// <summary>WGS84 point (SRID 4326). X = longitude, Y = latitude.</summary>
     public required Point Location { get; set; }
 
+    /// <summary>
+    /// Set when the device only shared an approximate location (e.g. Android's "Approximate"
+    /// permission): Location is then only known to within this many meters. Null = precise.
+    /// </summary>
+    public int? LocationRadiusMeters { get; set; }
+
     public int Views { get; set; }
     public int Upvotes { get; set; }
     public int Downvotes { get; set; }

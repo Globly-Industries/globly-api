@@ -50,7 +50,8 @@ public class GeoService(AppDbContext db)
                    COUNT(*)::int AS "Count",
                    (array_agg(p."Id"))[1] AS "PostId",
                    (array_agg(p."MediaType"))[1] AS "MediaType",
-                   (array_agg(p."Title"))[1] AS "Title"
+                   (array_agg(p."Title"))[1] AS "Title",
+                   (array_agg(p."LocationRadiusMeters"))[1] AS "LocationRadiusMeters"
             FROM "Posts" p
             WHERE p."Location" && ST_MakeEnvelope({minLng}, {minLat}, {maxLng}, {maxLat}, 4326)
               AND NOT p."IsHidden"
@@ -62,7 +63,7 @@ public class GeoService(AppDbContext db)
             """).ToListAsync(ct);
 
         return rows.Select(r => r.Count == 1
-                ? new MapPointDto(r.Latitude, r.Longitude, 1, r.PostId, (MediaType)r.MediaType, r.Title)
+                ? new MapPointDto(r.Latitude, r.Longitude, 1, r.PostId, (MediaType)r.MediaType, r.Title, r.LocationRadiusMeters)
                 : new MapPointDto(r.Latitude, r.Longitude, r.Count, null, null, null))
             .ToList();
     }
@@ -89,5 +90,6 @@ public class GeoService(AppDbContext db)
         public Guid PostId { get; set; }
         public int MediaType { get; set; }
         public string Title { get; set; } = "";
+        public int? LocationRadiusMeters { get; set; }
     }
 }

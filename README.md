@@ -41,6 +41,25 @@ dotnet tool restore
 dotnet ef migrations add <Name> --project src/Globly.Api --output-dir Data/Migrations
 ```
 
+### Tests
+
+```powershell
+dotnet test tests/Globly.Api.Tests
+```
+
+The video and audio tests need `ffmpeg` and `ffprobe` on PATH, and show as skipped without them.
+
+## Media metadata
+
+Uploads are cleaned before they are stored (`Storage/MediaSanitizer.cs`), because camera files can
+contain the exact GPS position and media URLs are public. Images go through Magick.NET (metadata
+removed, pixels turned upright, colour profile kept) and video/audio through ffmpeg (metadata removed,
+no re-encoding). If a file can't be cleaned it is rejected, never stored as it is.
+
+ffmpeg is installed in the Docker image. **To upload video or audio when running locally, `ffmpeg` must
+be on PATH** (or set `Media__FfmpegPath`), otherwise those uploads fail with a 500. Files uploaded before
+this was added were not cleaned.
+
 ## Deploying to the server (Windows + Docker Desktop)
 
 Everything runs in Docker: PostGIS, the API and `cloudflared`. The tunnel's public hostname

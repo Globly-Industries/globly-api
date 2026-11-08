@@ -191,6 +191,9 @@ namespace Globly.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("geometry(Point,4326)");
 
+                    b.Property<int?>("LocationRadiusMeters")
+                        .HasColumnType("integer");
+
                     b.Property<int>("MediaType")
                         .HasColumnType("integer");
 

@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Globly.Api/Globly.Api.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Globly.Api.Tests/Globly.Api.Tests.csproj" />
+  </Folder>
 </Solution>

@@ -104,6 +104,8 @@ if (storageProvider.Equals("R2", StringComparison.OrdinalIgnoreCase))
 else
     builder.Services.AddSingleton<IMediaStorage, LocalMediaStorage>();
 
+builder.Services.Configure<MediaOptions>(config.GetSection(MediaOptions.Section));
+builder.Services.AddSingleton<IMediaSanitizer, MediaSanitizer>();
 builder.Services.AddSingleton<IContentModerator, RuleBasedContentModerator>();
 builder.Services.AddScoped<CommunityModeration>();
 builder.Services.Configure<TurnstileOptions>(config.GetSection(TurnstileOptions.Section));

@@ -16,6 +16,8 @@ public record PostDto(
     MediaDto? Media,
     double Latitude,
     double Longitude,
+    /// <summary>Null when precise; otherwise the location is only known to within this many meters.</summary>
+    int? LocationRadiusMeters,
     int Views,
     int Upvotes,
     int Downvotes,
@@ -49,6 +51,10 @@ public class CreatePostForm
     [Range(-180, 180)]
     public double Longitude { get; set; }
 
+    /// <summary>Send when the device gave only an approximate location. Omit when precise.</summary>
+    [Range(1, 50000)]
+    public int? LocationRadiusMeters { get; set; }
+
     public IFormFile? File { get; set; }
 }
 
@@ -80,4 +86,11 @@ public record MapQuery(
 /// A map point. When Count == 1 it is a single post (PostId/MediaType/Title set);
 /// otherwise it is a cluster that the app should render as a bubble and zoom into on tap.
 /// </summary>
-public record MapPointDto(double Latitude, double Longitude, int Count, Guid? PostId, MediaType? MediaType, string? Title);
+public record MapPointDto(
+    double Latitude,
+    double Longitude,
+    int Count,
+    Guid? PostId,
+    MediaType? MediaType,
+    string? Title,
+    int? LocationRadiusMeters = null);
