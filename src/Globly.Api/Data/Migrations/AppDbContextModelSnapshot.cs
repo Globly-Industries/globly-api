@@ -234,6 +234,18 @@ namespace Globly.Api.Data.Migrations
                     b.Property<bool>("ModeratorApproved")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("NsfwScanAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("NsfwScannedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<float?>("NsfwScore")
+                        .HasColumnType("real");
+
                     b.Property<int>("ReportCount")
                         .HasColumnType("integer");
 

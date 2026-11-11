@@ -11,6 +11,8 @@ public enum HiddenReason
     Downvotes = 2,
     /// <summary>Hidden by an administrator.</summary>
     Admin = 3,
+    /// <summary>Hidden automatically: the NSFW filter is nearly sure the media is explicit.</summary>
+    Automatic = 4,
 }
 
 public enum MediaType
@@ -64,6 +66,21 @@ public class Post
 
     /// <summary>An admin reviewed and restored this post; the downvote rule no longer hides it.</summary>
     public bool ModeratorApproved { get; set; }
+
+    /// <summary>
+    /// Visible, but the NSFW filter was unsure about it, so it waits in the admin queue.
+    /// Cleared when an admin restores (approves) the post.
+    /// </summary>
+    public bool NeedsReview { get; set; }
+
+    /// <summary>NSFW filter's probability (0-1) that the media is explicit. Null until scanned or for text/audio.</summary>
+    public float? NsfwScore { get; set; }
+
+    /// <summary>When the NSFW filter finished with this post (also set when it gave up).</summary>
+    public DateTime? NsfwScannedAt { get; set; }
+
+    /// <summary>Failed scan attempts; the scanner gives up after a few.</summary>
+    public int NsfwScanAttempts { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }

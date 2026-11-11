@@ -23,7 +23,8 @@ public class PostsController(
     IMediaStorage storage,
     IMediaSanitizer sanitizer,
     IContentModerator moderator,
-    IOptions<CaptureOptions> captureOptions) : ControllerBase
+    IOptions<CaptureOptions> captureOptions,
+    NsfwScanSignal nsfwScan) : ControllerBase
 {
     private const int MaxPageSize = 50;
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
@@ -177,6 +178,7 @@ public class PostsController(
                 throw;
             }
             published = true;
+            if (file is not null) nsfwScan.Notify();
 
             var dto = await posts.GetDtoAsync(post.Id, userId, ct);
             return CreatedAtAction(nameof(Get), new { id = post.Id }, dto);

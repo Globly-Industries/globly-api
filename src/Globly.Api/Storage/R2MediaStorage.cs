@@ -44,6 +44,12 @@ public sealed class R2MediaStorage : IMediaStorage, IDisposable
         await _s3.DeleteObjectAsync(_opt.Bucket, objectKey, ct);
     }
 
+    public async Task DownloadAsync(string objectKey, Stream destination, CancellationToken ct = default)
+    {
+        using var response = await _s3.GetObjectAsync(_opt.Bucket, objectKey, ct);
+        await response.ResponseStream.CopyToAsync(destination, ct);
+    }
+
     public string GetReadUrl(string objectKey)
     {
         if (!string.IsNullOrWhiteSpace(_opt.PublicBaseUrl))

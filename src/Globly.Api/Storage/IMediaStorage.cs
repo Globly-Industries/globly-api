@@ -9,6 +9,9 @@ public interface IMediaStorage
     Task UploadAsync(string objectKey, Stream content, string contentType, CancellationToken ct = default);
     Task DeleteAsync(string objectKey, CancellationToken ct = default);
 
+    /// <summary>Copies a stored object into <paramref name="destination"/> (used by the NSFW scanner).</summary>
+    Task DownloadAsync(string objectKey, Stream destination, CancellationToken ct = default);
+
     /// <summary>URL the app uses to stream the object directly (public R2 domain or a presigned URL).</summary>
     string GetReadUrl(string objectKey);
 }

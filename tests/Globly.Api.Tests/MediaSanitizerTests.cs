@@ -112,7 +112,7 @@ public class MediaSanitizerTests
 
     // ---------- Video and audio need ffmpeg; these show as skipped on machines without it. ----------
 
-    private static async Task<byte[]> Generate(string extension, params string[] args)
+    internal static async Task<byte[]> Generate(string extension, params string[] args)
     {
         var path = Path.Combine(Path.GetTempPath(), $"globly-test-{Guid.NewGuid():N}{extension}");
         try

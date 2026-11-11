@@ -82,3 +82,5 @@ _[Ss]cripts
 .env
 # Local media storage used in development
 src/Globly.Api/media/
+# NSFW model, downloaded separately (see README)
+src/Globly.Api/models/

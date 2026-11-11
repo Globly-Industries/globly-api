@@ -83,6 +83,14 @@ public class MediaSanitizer : IMediaSanitizer
         ["audio/webm"] = ("matroska", ".webm"),
     };
 
+    /// <summary>ImageMagick decoder for a stored image, so reading it back never relies on format detection.</summary>
+    public static MagickFormat? ImageFormatOf(string contentType) =>
+        ImageFormats.TryGetValue(contentType, out var format) ? format : null;
+
+    /// <summary>ffmpeg input format (demuxer) for stored video or audio.</summary>
+    public static string? FfmpegFormatOf(string contentType) =>
+        StreamFormats.TryGetValue(contentType, out var format) ? format.Input : null;
+
     public Task<SanitizedMedia> SanitizeAsync(MediaType mediaType, string contentType, Stream input, CancellationToken ct) =>
         mediaType == MediaType.Image
             ? Task.Run(() => SanitizeImage(contentType, input), ct)

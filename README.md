@@ -19,7 +19,7 @@ Flutter app ──HTTPS──▶ Cloudflare ──Tunnel──▶ cloudflared �
 | `Ratings/`    | Publication rating module (votes, comments, moderation reports) |
 | `Admin/`      | Administration module                               |
 | `Storage/`    | Cloudflare R2 storage (+ local disk for development) |
-| `Moderation/` | Automatic content checks before publishing          |
+| `Moderation/` | Automatic content checks and the NSFW filter        |
 | `Data/`       | EF Core DbContext, entities, migrations             |
 
 ## Running locally
@@ -111,6 +111,29 @@ with the reason) when either rule is met:
 Hidden posts wait in the admin queue (`GET /api/admin/posts`). **Restore** makes the post visible again,
 clears its reports and stops the downvote rule from hiding it again (new reports still count).
 **Delete** removes it with its media. Admins can also hide a post manually.
+
+## NSFW filter
+Photos and videos are scored by an image classifier after they are published
+(`Moderation/NsfwScanner.cs`), so uploads never wait for it. The model is an ONNX export of
+[Falconsai/nsfw_image_detection](https://huggingface.co/Falconsai/nsfw_image_detection) (Apache-2.0),
+run on the CPU with ONNX Runtime. Videos are sampled at one frame every 3 seconds and score as their
+worst frame; animated images up to 8 frames. Audio is not scanned.
+- Score ≥ `Moderation:Nsfw:HideThreshold` (0.9): hidden with reason `Automatic`, waits in the admin queue.
+- Score ≥ `ReviewThreshold` (0.6): stays visible but goes to the admin queue as "flagged".
+- **Restore** in the queue approves the post; the filter never hides an approved post.
+
+Scores are stored on the post (`NsfwScore`, shown to admins only), so the thresholds can be tuned
+from real data. Posts from before the filter existed are scanned in the background, newest first.
+
+The Docker image downloads the model (87 MB, pinned and checksum-verified). **To scan when running
+locally**, download it once (without it the API runs normally and logs that scanning is off):
+
+```powershell
+mkdir src/Globly.Api/models
+curl.exe -L -o src/Globly.Api/models/nsfw.onnx https://huggingface.co/onnx-community/nsfw_image_detection-ONNX/resolve/1ceb3c7fe1e9f3f2507e6df577437f23a9149fd5/onnx/model_quantized.onnx
+```
+
+The model tests show as skipped until it is there.
 
 Errors carry a machine-readable `code` (e.g. `username_taken`, `captcha_failed`) next to the English
 `detail`, so the app can show them in the user's language.

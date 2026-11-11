@@ -28,8 +28,12 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
         return q;
     }
 
-    /// <summary>Projects posts to DTOs in one query. Ordering/paging must already be applied.</summary>
-    public async Task<List<PostDto>> ToDtosAsync(IQueryable<Post> q, string? currentUserId, CancellationToken ct = default)
+    /// <summary>
+    /// Projects posts to DTOs in one query. Ordering/paging must already be applied.
+    /// <paramref name="forAdmin"/> adds the NSFW filter's findings.
+    /// </summary>
+    public async Task<List<PostDto>> ToDtosAsync(
+        IQueryable<Post> q, string? currentUserId, CancellationToken ct = default, bool forAdmin = false)
     {
         var rows = await q.Select(p => new
         {
@@ -56,6 +60,8 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             p.HiddenReason,
             p.CreatedAt,
             p.UpdatedAt,
+            p.NsfwScore,
+            p.NeedsReview,
         }).ToListAsync(ct);
 
         return rows.Select(r => new PostDto(
@@ -77,7 +83,9 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             r.IsHidden,
             r.HiddenReason,
             r.CreatedAt,
-            r.UpdatedAt)).ToList();
+            r.UpdatedAt,
+            forAdmin ? r.NsfwScore : null,
+            forAdmin && r.NeedsReview)).ToList();
     }
 
     public async Task<PostDto?> GetDtoAsync(Guid id, string? currentUserId, CancellationToken ct = default) =>

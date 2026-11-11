@@ -109,6 +109,10 @@ builder.Services.Configure<MediaOptions>(config.GetSection(MediaOptions.Section)
 builder.Services.AddSingleton<IMediaSanitizer, MediaSanitizer>();
 builder.Services.AddSingleton<IContentModerator, RuleBasedContentModerator>();
 builder.Services.AddScoped<CommunityModeration>();
+builder.Services.Configure<NsfwOptions>(config.GetSection(NsfwOptions.Section));
+builder.Services.AddSingleton(NsfwClassifier.Create);
+builder.Services.AddSingleton<NsfwScanSignal>();
+builder.Services.AddHostedService<NsfwScanner>();
 builder.Services.Configure<TurnstileOptions>(config.GetSection(TurnstileOptions.Section));
 builder.Services.AddHttpClient<TurnstileVerifier>(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<PostService>();

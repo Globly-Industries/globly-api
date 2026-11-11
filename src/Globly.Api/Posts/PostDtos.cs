@@ -29,7 +29,11 @@ public record PostDto(
     bool IsHidden,
     HiddenReason HiddenReason,
     DateTime CreatedAt,
-    DateTime? UpdatedAt);
+    DateTime? UpdatedAt,
+    /// <summary>Admins only (null for everyone else): the NSFW filter's score, 0-1.</summary>
+    float? NsfwScore = null,
+    /// <summary>Admins only: the NSFW filter queued this visible post for review.</summary>
+    bool NeedsReview = false);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, bool HasMore);
 

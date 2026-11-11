@@ -24,6 +24,12 @@ public sealed class LocalMediaStorage(IOptions<StorageOptions> options, IWebHost
         return Task.CompletedTask;
     }
 
+    public async Task DownloadAsync(string objectKey, Stream destination, CancellationToken ct = default)
+    {
+        await using var file = File.OpenRead(ResolvePath(objectKey));
+        await file.CopyToAsync(destination, ct);
+    }
+
     public string GetReadUrl(string objectKey) => $"{_opt.PublicBaseUrl.TrimEnd('/')}/{objectKey}";
 
     private string ResolvePath(string objectKey)

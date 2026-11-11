@@ -21,8 +21,9 @@ public record ReportDto(string UserId, string? UserName, string? Reason, DateTim
 public class AdminController(AppDbContext db, PostService posts, UserManager<AppUser> users) : ControllerBase
 {
     /// <summary>
-    /// Moderation queue. By default only hidden posts (hidden by community moderation or an admin),
-    /// most reported first. With hiddenOnly=false: all posts, newest first.
+    /// Moderation queue. By default hidden posts (by community moderation, the NSFW filter or an admin)
+    /// and visible posts the NSFW filter is unsure about, most reported first, then most likely
+    /// explicit. With hiddenOnly=false: all posts, newest first.
     /// </summary>
     [HttpGet("posts")]
     public async Task<ActionResult<PagedResult<PostDto>>> GetPosts(
@@ -33,10 +34,13 @@ public class AdminController(AppDbContext db, PostService posts, UserManager<App
     {
         IQueryable<Post> q = db.Posts;
         q = hiddenOnly
-            ? q.Where(p => p.IsHidden).OrderByDescending(p => p.ReportCount).ThenByDescending(p => p.HiddenAt)
+            ? q.Where(p => p.IsHidden || p.NeedsReview)
+                .OrderByDescending(p => p.ReportCount)
+                .ThenByDescending(p => p.NsfwScore ?? 0)
+                .ThenByDescending(p => p.HiddenAt)
             : q.OrderByDescending(p => p.CreatedAt);
 
-        var items = await posts.ToDtosAsync(q.Skip((page - 1) * pageSize).Take(pageSize + 1), User.GetUserId(), ct);
+        var items = await posts.ToDtosAsync(q.Skip((page - 1) * pageSize).Take(pageSize + 1), User.GetUserId(), ct, forAdmin: true);
         var hasMore = items.Count > pageSize;
         if (hasMore) items.RemoveAt(items.Count - 1);
         return new PagedResult<PostDto>(items, page, pageSize, hasMore);
@@ -50,8 +54,8 @@ public class AdminController(AppDbContext db, PostService posts, UserManager<App
             .ToListAsync(ct);
 
     /// <summary>
-    /// Post reviewed and found acceptable: make it visible again, clear its reports, and stop the
-    /// downvote rule from hiding it again. New reports can still hide it.
+    /// Post reviewed and found acceptable: make it visible again, clear its reports and NSFW flag, and
+    /// stop the downvote rule from hiding it again. New reports can still hide it.
     /// </summary>
     [HttpPost("posts/{id:guid}/restore")]
     public async Task<IActionResult> Restore(Guid id, CancellationToken ct)
@@ -64,6 +68,7 @@ public class AdminController(AppDbContext db, PostService posts, UserManager<App
             .SetProperty(p => p.IsHidden, false)
             .SetProperty(p => p.HiddenReason, HiddenReason.None)
             .SetProperty(p => p.HiddenAt, (DateTime?)null)
+            .SetProperty(p => p.NeedsReview, false)
             .SetProperty(p => p.ModeratorApproved, true), ct);
         return NoContent();
     }
