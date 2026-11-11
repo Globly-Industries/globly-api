@@ -16,7 +16,7 @@ Flutter app ──HTTPS──▶ Cloudflare ──Tunnel──▶ cloudflared �
 |---------------|-----------------------------------------------------|
 | `Auth/`       | User authentication module (Identity + JWT)         |
 | `Posts/`      | Content processing + geospatial module (map clustering, nearby, feed) |
-| `Ratings/`    | Publication rating module (votes, comments, emoji, moderation reports) |
+| `Ratings/`    | Publication rating module (votes, comments, moderation reports) |
 | `Admin/`      | Administration module                               |
 | `Storage/`    | Cloudflare R2 storage (+ local disk for development) |
 | `Moderation/` | Automatic content checks before publishing          |
@@ -147,8 +147,7 @@ Errors carry a machine-readable `code` (e.g. `username_taken`, `captcha_failed`)
 | POST | `/api/posts` (multipart: title, description, mediaType, latitude, longitude, file) | user |
 | PUT / DELETE | `/api/posts/{id}` | author or admin |
 | PUT | `/api/posts/{id}/vote` `{ value: 1 / -1 / 0 }` | user |
-| GET / POST | `/api/posts/{id}/comments` (`?kind=All/Text/Emoji`) | GET: – / POST: user |
-| GET | `/api/posts/{id}/emoji` | – |
+| GET / POST | `/api/posts/{id}/comments` | GET: – / POST: user |
 | DELETE | `/api/comments/{id}` | author or admin |
 | POST | `/api/posts/{id}/report` | user |
 | GET | `/api/admin/posts?hiddenOnly`, `/api/admin/posts/{id}/reports`, `/api/admin/users` | admin |

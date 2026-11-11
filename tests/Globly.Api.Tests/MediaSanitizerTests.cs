@@ -131,17 +131,51 @@ public class MediaSanitizerTests
         }
     }
 
+    /// <summary>The video's display rotation as ffprobe reports it, or null if it has none.</summary>
+    private static async Task<string?> RotationOf(byte[] video)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"globly-test-{Guid.NewGuid():N}.mp4");
+        await File.WriteAllBytesAsync(path, video);
+        try
+        {
+            var probe = new ProcessStartInfo("ffprobe") { RedirectStandardOutput = true, UseShellExecute = false };
+            foreach (var arg in new[] { "-v", "error", "-show_entries", "stream_side_data=rotation", path })
+                probe.ArgumentList.Add(arg);
+            using var process = Process.Start(probe)!;
+            var info = await process.StandardOutput.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            return info.Split('\n').Select(l => l.Trim()).FirstOrDefault(l => l.StartsWith("rotation="));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [FfmpegFact]
     public async Task Videos_lose_their_location_and_keep_their_rotation()
     {
-        var input = await Generate(".mp4",
-            "-display_rotation", "90",
-            "-f", "lavfi", "-i", "testsrc=duration=1:size=64x64:rate=5",
-            "-metadata", $"location=+56.9500+024.1000/",
-            "-metadata", $"title={Secret}",
-            "-c:v", "mpeg4", "-movflags", "use_metadata_tags");
+        // Two steps, the way a phone file looks: encoded video, then a rotation tag on the track.
+        // (Newer ffmpeg ignores -display_rotation on a generated source that it re-encodes.)
+        var plain = await Generate(".mp4", "-f", "lavfi", "-i", "testsrc=duration=1:size=64x64:rate=5", "-c:v", "mpeg4");
+        var source = Path.Combine(Path.GetTempPath(), $"globly-test-{Guid.NewGuid():N}.mp4");
+        await File.WriteAllBytesAsync(source, plain);
+        byte[] input;
+        try
+        {
+            input = await Generate(".mp4",
+                "-display_rotation", "90", "-i", source,
+                "-metadata", $"location=+56.9500+024.1000/",
+                "-metadata", $"title={Secret}",
+                "-c", "copy", "-movflags", "use_metadata_tags");
+        }
+        finally
+        {
+            File.Delete(source);
+        }
         Assert.True(ContainsSecret(input));
         Assert.Contains("+56.9500", Encoding.Latin1.GetString(input));
+        Assert.Equal("rotation=90", await RotationOf(input));
 
         var output = await Clean(MediaType.Video, "video/mp4", input);
 
@@ -150,24 +184,7 @@ public class MediaSanitizerTests
         Assert.DoesNotContain("+56.9500", text);
 
         // The rotation lives in the track header, not in the removed metadata.
-        var path = Path.Combine(Path.GetTempPath(), $"globly-test-{Guid.NewGuid():N}.mp4");
-        await File.WriteAllBytesAsync(path, output);
-        try
-        {
-            var probe = new ProcessStartInfo("ffprobe", $"-v error -show_streams -show_entries stream_side_data=rotation \"{path}\"")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-            };
-            using var process = Process.Start(probe)!;
-            var info = await process.StandardOutput.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            Assert.Contains("rotation=", info);
-        }
-        finally
-        {
-            File.Delete(path);
-        }
+        Assert.Equal("rotation=90", await RotationOf(output));
     }
 
     [FfmpegFact]

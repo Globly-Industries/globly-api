@@ -14,17 +14,14 @@ namespace Globly.Api.Ratings;
 public record VoteRequest([Range(-1, 1)] int Value);
 public record VoteResult(int Upvotes, int Downvotes, int MyVote, bool IsHidden);
 
-public record CreateCommentRequest([StringLength(1000)] string? Body, [StringLength(16)] string? Emoji);
-public record CommentDto(Guid Id, Guid PostId, AuthorDto Author, string? Body, string? Emoji, DateTime CreatedAt);
-public record EmojiCount(string Emoji, int Count);
+public record CreateCommentRequest([StringLength(1000)] string? Body);
+public record CommentDto(Guid Id, Guid PostId, AuthorDto Author, string Body, DateTime CreatedAt);
 
 public record ReportRequest([StringLength(500)] string? Reason);
 public record ReportResult(bool IsHidden);
 
-public enum CommentKind { All, Text, Emoji }
-
 /// <summary>
-/// Publication rating module: votes, comments, emoji and "needs manual moderation" reports.
+/// Publication rating module: votes, comments and "needs manual moderation" reports.
 /// Votes and reports feed <see cref="CommunityModeration"/>, which hides posts the community rejects.
 /// </summary>
 [ApiController]
@@ -60,28 +57,20 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
         return new VoteResult(post.Upvotes, post.Downvotes, req.Value, post.IsHidden);
     }
 
-    /// <summary>Comments of a post, newest first. Filter by kind (text comments only / emoji only).</summary>
+    /// <summary>Text comments of a post, newest first.</summary>
     [HttpGet("posts/{postId:guid}/comments")]
     public async Task<ActionResult<PagedResult<CommentDto>>> GetComments(
         Guid postId,
-        CommentKind kind = CommentKind.All,
         [Range(1, int.MaxValue)] int page = 1,
         [Range(1, 100)] int pageSize = 30,
         CancellationToken ct = default)
     {
         if (await FindVisibleAsync(postId, ct) is null) return NotFound();
 
-        var q = db.Comments.Where(c => c.PostId == postId);
-        q = kind switch
-        {
-            CommentKind.Text => q.Where(c => c.Body != null),
-            CommentKind.Emoji => q.Where(c => c.Emoji != null),
-            _ => q,
-        };
-
-        var items = await q.OrderByDescending(c => c.CreatedAt)
+        var items = await db.Comments.Where(c => c.PostId == postId)
+            .OrderByDescending(c => c.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize + 1)
-            .Select(c => new CommentDto(c.Id, c.PostId, new AuthorDto(c.UserId, c.User!.UserName!), c.Body, c.Emoji, c.CreatedAt))
+            .Select(c => new CommentDto(c.Id, c.PostId, new AuthorDto(c.UserId, c.User!.UserName!), c.Body, c.CreatedAt))
             .ToListAsync(ct);
 
         var hasMore = items.Count > pageSize;
@@ -89,27 +78,13 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
         return new PagedResult<CommentDto>(items, page, pageSize, hasMore);
     }
 
-    /// <summary>Emoji totals for a post, most used first.</summary>
-    [HttpGet("posts/{postId:guid}/emoji")]
-    public async Task<ActionResult<List<EmojiCount>>> GetEmojiSummary(Guid postId, CancellationToken ct)
-    {
-        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
-
-        return await db.Comments.Where(c => c.PostId == postId && c.Emoji != null)
-            .GroupBy(c => c.Emoji!)
-            .OrderByDescending(g => g.Count())
-            .Select(g => new EmojiCount(g.Key, g.Count()))
-            .ToListAsync(ct);
-    }
-
     [Authorize]
     [HttpPost("posts/{postId:guid}/comments")]
     public async Task<ActionResult<CommentDto>> AddComment(Guid postId, CreateCommentRequest req, CancellationToken ct)
     {
         var body = string.IsNullOrWhiteSpace(req.Body) ? null : req.Body.Trim();
-        var emoji = string.IsNullOrWhiteSpace(req.Emoji) ? null : req.Emoji.Trim();
-        if (body is null && emoji is null)
-            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.CommentEmpty, "A comment needs text or an emoji.");
+        if (body is null)
+            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.CommentEmpty, "A comment needs text.");
 
         var check = moderator.CheckText(null, body);
         if (!check.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, check.Code!, check.Reason!);
@@ -117,12 +92,16 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
         if (await FindVisibleAsync(postId, ct) is null) return NotFound();
 
         var userId = User.RequireUserId();
-        var comment = new Comment { PostId = postId, UserId = userId, Body = body, Emoji = emoji };
+        var comment = new Comment { PostId = postId, UserId = userId, Body = body };
         db.Comments.Add(comment);
         await db.SaveChangesAsync(ct);
 
-        return new CommentDto(comment.Id, postId, new AuthorDto(userId, User.Identity?.Name ?? ""), body, emoji, comment.CreatedAt);
+        return new CommentDto(comment.Id, postId, new AuthorDto(userId, User.Identity?.Name ?? ""), body, comment.CreatedAt);
     }
+
+    /// <summary>Legacy: emoji reactions were removed. Always empty, so older app versions still load posts.</summary>
+    [HttpGet("posts/{postId:guid}/emoji")]
+    public ActionResult<object[]> GetEmojiSummary(Guid postId) => Array.Empty<object>();
 
     [Authorize]
     [HttpDelete("comments/{id:guid}")]

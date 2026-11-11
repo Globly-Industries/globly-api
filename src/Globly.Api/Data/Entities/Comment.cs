@@ -1,6 +1,6 @@
 namespace Globly.Api.Data.Entities;
 
-/// <summary>A rating of a post: a text comment and/or an emoji (Comments table).</summary>
+/// <summary>A text comment on a post (Comments table).</summary>
 public class Comment
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
@@ -11,8 +11,7 @@ public class Comment
     public required string UserId { get; set; }
     public AppUser? User { get; set; }
 
-    public string? Body { get; set; }
-    public string? Emoji { get; set; }
+    public required string Body { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

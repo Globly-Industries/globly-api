@@ -98,15 +98,12 @@ namespace Globly.Api.Data.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<string>("Body")
+                        .IsRequired()
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Emoji")
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)");
 
                     b.Property<Guid>("PostId")
                         .HasColumnType("uuid");

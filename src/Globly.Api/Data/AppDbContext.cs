@@ -45,7 +45,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         b.Entity<Comment>(e =>
         {
             e.Property(c => c.Body).HasMaxLength(1000);
-            e.Property(c => c.Emoji).HasMaxLength(16);
             e.HasIndex(c => new { c.PostId, c.CreatedAt });
             e.HasOne(c => c.Post).WithMany(p => p.Comments)
                 .HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
