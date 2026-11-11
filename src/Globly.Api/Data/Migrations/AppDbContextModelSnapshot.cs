@@ -91,6 +91,43 @@ namespace Globly.Api.Data.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("Globly.Api.Data.Entities.CaptureTicket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("IssuedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("MediaType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SealedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Sha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sha256")
+                        .IsUnique()
+                        .HasFilter("\"Sha256\" IS NOT NULL");
+
+                    b.HasIndex("UserId", "IssuedAt");
+
+                    b.ToTable("CaptureTickets");
+                });
+
             modelBuilder.Entity("Globly.Api.Data.Entities.Comment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -408,6 +445,15 @@ namespace Globly.Api.Data.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Globly.Api.Data.Entities.CaptureTicket", b =>
+                {
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Globly.Api.Data.Entities.Comment", b =>

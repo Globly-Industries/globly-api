@@ -19,6 +19,8 @@ public static class ErrorCodes
     public const string TextRequired = "text_required";
     public const string CommentEmpty = "comment_empty";
     public const string CannotDeleteSelf = "cannot_delete_self";
+    public const string CaptureInvalid = "capture_invalid";
+    public const string CaptureExpired = "capture_expired";
 }
 
 public static class ProblemExtensions

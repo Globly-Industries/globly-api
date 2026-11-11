@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Cryptography;
 using Globly.Api.Auth;
 using Globly.Api.Common;
 using Globly.Api.Data;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Globly.Api.Posts;
 
@@ -20,7 +22,8 @@ public class PostsController(
     GeoService geo,
     IMediaStorage storage,
     IMediaSanitizer sanitizer,
-    IContentModerator moderator) : ControllerBase
+    IContentModerator moderator,
+    IOptions<CaptureOptions> captureOptions) : ControllerBase
 {
     private const int MaxPageSize = 50;
     private static readonly FileExtensionContentTypeProvider ContentTypes = new();
@@ -97,77 +100,94 @@ public class PostsController(
         var textCheck = moderator.CheckText(form.Title, form.Description);
         if (!textCheck.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, textCheck.Code!, textCheck.Reason!);
 
-        MediaFile? file = null;
-        if (form.MediaType == MediaType.Text)
-        {
-            if (form.File is not null)
-                return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.InvalidFile, "Text posts cannot have a file.");
-            if (string.IsNullOrWhiteSpace(form.Description))
-                return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.TextRequired, "Text posts need a description.");
-        }
-        else
-        {
-            if (form.File is null)
-                return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.FileRequired, $"{form.MediaType} posts need a file.");
-
-            var contentType = ResolveContentType(form.File);
-            var fileCheck = moderator.CheckFile(form.MediaType, contentType, form.File.Length);
-            if (!fileCheck.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, fileCheck.Code!, fileCheck.Reason!);
-
-            var ext = Path.GetExtension(form.File.FileName).ToLowerInvariant();
-            if (ext.Length > 10) ext = "";
-            var key = $"posts/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid():N}{ext}";
-
-            // Only the cleaned copy is ever stored, so a failure here must stop the post.
-            SanitizedMedia clean;
-            try
-            {
-                await using var stream = form.File.OpenReadStream();
-                clean = await sanitizer.SanitizeAsync(form.MediaType, contentType, stream, ct);
-            }
-            catch (MediaRejectedException ex)
-            {
-                return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.InvalidFile, ex.Message);
-            }
-
-            await using (clean)
-            {
-                await storage.UploadAsync(key, clean.Content, contentType, ct);
-
-                file = new MediaFile
-                {
-                    ObjectKey = key,
-                    FileName = Path.GetFileName(form.File.FileName),
-                    ContentType = contentType,
-                    ContentLength = clean.Length,
-                };
-            }
-        }
-
-        var post = new Post
-        {
-            UserId = userId,
-            Title = form.Title.Trim(),
-            Description = form.Description?.Trim(),
-            MediaType = form.MediaType,
-            File = file,
-            Location = GeoService.ToPoint(form.Latitude, form.Longitude),
-            LocationRadiusMeters = form.LocationRadiusMeters,
-        };
-        db.Posts.Add(post);
-
+        Guid? claimedCapture = null;
+        var published = false;
         try
         {
-            await db.SaveChangesAsync(ct);
-        }
-        catch
-        {
-            if (file is not null) await posts.DeleteObjectQuietly(file.ObjectKey, CancellationToken.None);
-            throw;
-        }
+            MediaFile? file = null;
+            if (form.MediaType == MediaType.Text)
+            {
+                if (form.File is not null)
+                    return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.InvalidFile, "Text posts cannot have a file.");
+                if (string.IsNullOrWhiteSpace(form.Description))
+                    return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.TextRequired, "Text posts need a description.");
+            }
+            else
+            {
+                if (form.File is null)
+                    return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.FileRequired, $"{form.MediaType} posts need a file.");
 
-        var dto = await posts.GetDtoAsync(post.Id, userId, ct);
-        return CreatedAtAction(nameof(Get), new { id = post.Id }, dto);
+                var contentType = ResolveContentType(form.File);
+                var fileCheck = moderator.CheckFile(form.MediaType, contentType, form.File.Length);
+                if (!fileCheck.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, fileCheck.Code!, fileCheck.Reason!);
+
+                var captureProblem = await ClaimCaptureAsync(form, userId, ct);
+                if (captureProblem != CaptureProblem.None) return CapturesController.CaptureProblemResult(this, captureProblem);
+                claimedCapture = form.CaptureId;
+
+                var ext = Path.GetExtension(form.File.FileName).ToLowerInvariant();
+                if (ext.Length > 10) ext = "";
+                var key = $"posts/{DateTime.UtcNow:yyyy/MM}/{Guid.NewGuid():N}{ext}";
+
+                // Only the cleaned copy is ever stored, so a failure here must stop the post.
+                SanitizedMedia clean;
+                try
+                {
+                    await using var stream = form.File.OpenReadStream();
+                    clean = await sanitizer.SanitizeAsync(form.MediaType, contentType, stream, ct);
+                }
+                catch (MediaRejectedException ex)
+                {
+                    return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.InvalidFile, ex.Message);
+                }
+
+                await using (clean)
+                {
+                    await storage.UploadAsync(key, clean.Content, contentType, ct);
+
+                    file = new MediaFile
+                    {
+                        ObjectKey = key,
+                        FileName = Path.GetFileName(form.File.FileName),
+                        ContentType = contentType,
+                        ContentLength = clean.Length,
+                    };
+                }
+            }
+
+            var post = new Post
+            {
+                UserId = userId,
+                Title = form.Title.Trim(),
+                Description = form.Description?.Trim(),
+                MediaType = form.MediaType,
+                File = file,
+                Location = GeoService.ToPoint(form.Latitude, form.Longitude),
+                LocationRadiusMeters = form.LocationRadiusMeters,
+            };
+            db.Posts.Add(post);
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch
+            {
+                if (file is not null) await posts.DeleteObjectQuietly(file.ObjectKey, CancellationToken.None);
+                throw;
+            }
+            published = true;
+
+            var dto = await posts.GetDtoAsync(post.Id, userId, ct);
+            return CreatedAtAction(nameof(Get), new { id = post.Id }, dto);
+        }
+        finally
+        {
+            // The post did not go out, so the same capture may be tried again.
+            if (claimedCapture is { } id && !published)
+                await db.CaptureTickets.Where(t => t.Id == id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, (DateTime?)null), CancellationToken.None);
+        }
     }
 
     /// <summary>Edit title/description. Allowed for the author and admins.</summary>
@@ -204,6 +224,28 @@ public class PostsController(
     }
 
     // ---------- Helpers ----------
+
+    /// <summary>
+    /// Checks that the upload is exactly the file sealed on its capture ticket, then marks the ticket
+    /// used. Claiming is a single conditional update, so two uploads of one capture cannot both pass.
+    /// </summary>
+    private async Task<CaptureProblem> ClaimCaptureAsync(CreatePostForm form, string userId, CancellationToken ct)
+    {
+        if (form.CaptureId is not { } captureId) return CaptureProblem.NotFound;
+
+        string sha256;
+        await using (var raw = form.File!.OpenReadStream())
+            sha256 = Convert.ToHexStringLower(await SHA256.HashDataAsync(raw, ct));
+
+        var ticket = await db.CaptureTickets.AsNoTracking().FirstOrDefaultAsync(t => t.Id == captureId, ct);
+        var now = DateTime.UtcNow;
+        var problem = CaptureRules.CheckPublish(ticket, userId, form.MediaType, sha256, now, captureOptions.Value);
+        if (problem != CaptureProblem.None) return problem;
+
+        var claimed = await db.CaptureTickets.Where(t => t.Id == captureId && t.UsedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct);
+        return claimed == 1 ? CaptureProblem.None : CaptureProblem.Used;
+    }
 
     private bool CanModify(Post post) => post.UserId == User.GetUserId() || User.IsInRole(Roles.Admin);
 

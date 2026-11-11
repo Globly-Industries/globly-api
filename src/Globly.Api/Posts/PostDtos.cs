@@ -56,6 +56,9 @@ public class CreatePostForm
     public int? LocationRadiusMeters { get; set; }
 
     public IFormFile? File { get; set; }
+
+    /// <summary>The sealed capture ticket of File (see CapturesController). Required with a file.</summary>
+    public Guid? CaptureId { get; set; }
 }
 
 public record UpdatePostRequest(

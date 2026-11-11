@@ -40,6 +40,20 @@ Content-Disposition: form-data; name="longitude"
 24.1052
 --b--
 
+### Media posts: get a capture ticket before capturing...
+POST {{host}}/api/captures
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "mediaType": "Image" }
+
+### ...seal it with the file's SHA-256 right after, then send its id as "captureId" with the post
+POST {{host}}/api/captures/paste-ticket-id/seal
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "sha256": "paste-64-hex-chars" }
+
 ### Map points for the Baltics
 GET {{host}}/api/posts/map?minLat=53&minLng=20&maxLat=60&maxLng=29&zoom=6
 

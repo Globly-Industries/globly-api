@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<PostVote> PostVotes => Set<PostVote>();
     public DbSet<PostReport> PostReports => Set<PostReport>();
+    public DbSet<CaptureTicket> CaptureTickets => Set<CaptureTicket>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -65,6 +66,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(r => r.Reason).HasMaxLength(500);
             e.HasOne<Post>().WithMany().HasForeignKey(r => r.PostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<AppUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<CaptureTicket>(e =>
+        {
+            e.Property(t => t.Sha256).HasMaxLength(64);
+            // One file, one post: also what stops reposting the same capture.
+            e.HasIndex(t => t.Sha256).IsUnique().HasFilter("\"Sha256\" IS NOT NULL");
+            e.HasIndex(t => new { t.UserId, t.IssuedAt });
+            e.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

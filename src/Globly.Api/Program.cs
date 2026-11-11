@@ -98,6 +98,7 @@ builder.Services.AddRateLimiter(o =>
 // ---------- Modules ----------
 builder.Services.Configure<StorageOptions>(config.GetSection(StorageOptions.Section));
 builder.Services.Configure<ModerationOptions>(config.GetSection(ModerationOptions.Section));
+builder.Services.Configure<CaptureOptions>(config.GetSection(CaptureOptions.Section));
 var storageProvider = config[$"{StorageOptions.Section}:Provider"] ?? "Local";
 if (storageProvider.Equals("R2", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddSingleton<IMediaStorage, R2MediaStorage>();
