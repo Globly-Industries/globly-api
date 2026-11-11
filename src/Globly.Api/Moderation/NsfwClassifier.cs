@@ -84,7 +84,8 @@ public sealed class NsfwClassifier : IDisposable
         var path = Path.GetFullPath(Path.Combine(env.ContentRootPath, o.ModelPath));
         if (!File.Exists(path))
         {
-            logger.LogWarning("NSFW model not found at {Path}: media is not scanned until it is there", path);
+            // File.Exists is also false when a parent directory can't be entered.
+            logger.LogWarning("NSFW model not found or not readable at {Path}: media is not scanned until it is there", path);
             return new NsfwClassifier();
         }
 

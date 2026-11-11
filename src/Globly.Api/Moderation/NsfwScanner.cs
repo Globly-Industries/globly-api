@@ -61,6 +61,7 @@ public sealed class NsfwScanner(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!classifier.IsAvailable) return;
+        logger.LogInformation("NSFW scanner started");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -136,6 +137,10 @@ public sealed class NsfwScanner(
         else if (verdict == NsfwVerdict.Review)
         {
             logger.LogInformation("Post {PostId} queued for review by the NSFW filter ({Score:P0})", postId, score);
+        }
+        else
+        {
+            logger.LogInformation("Post {PostId} passed the NSFW filter ({Score:P0})", postId, score);
         }
     }
 
