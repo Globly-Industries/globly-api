@@ -4,6 +4,7 @@ using Globly.Api.Common;
 using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Moderation;
+using Globly.Api.Notifications;
 using Globly.Api.Posts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,7 +27,7 @@ public record ReportResult(bool IsHidden);
 /// </summary>
 [ApiController]
 [Route("api")]
-public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community) : ControllerBase
+public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community, NotificationService notifications, PushQueue push) : ControllerBase
 {
     /// <summary>Set your vote: 1 = up, -1 = down, 0 = remove.</summary>
     [Authorize]
@@ -89,12 +90,15 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
         var check = moderator.CheckText(null, body);
         if (!check.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, check.Code!, check.Reason!);
 
-        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
+        var post = await FindVisibleAsync(postId, ct);
+        if (post is null) return NotFound();
 
         var userId = User.RequireUserId();
         var comment = new Comment { PostId = postId, UserId = userId, Body = body };
         db.Comments.Add(comment);
+        var created = await notifications.AddForCommentAsync(post, comment, ct);
         await db.SaveChangesAsync(ct);
+        push.Enqueue(created);
 
         return new CommentDto(comment.Id, postId, new AuthorDto(userId, User.Identity?.Name ?? ""), body, comment.CreatedAt);
     }

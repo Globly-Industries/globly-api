@@ -193,6 +193,52 @@ namespace Globly.Api.Data.Migrations
                     b.ToTable("Files", (string)null);
                 });
 
+            modelBuilder.Entity("Globly.Api.Data.Entities.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CommentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecipientId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("CommentId");
+
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("RecipientId")
+                        .HasDatabaseName("IX_Notifications_Unread")
+                        .HasFilter("\"ReadAt\" IS NULL");
+
+                    b.HasIndex("RecipientId", "CreatedAt");
+
+                    b.ToTable("Notifications");
+                });
+
             modelBuilder.Entity("Globly.Api.Data.Entities.Post", b =>
                 {
                     b.Property<Guid>("Id")
@@ -325,6 +371,31 @@ namespace Globly.Api.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("PostVotes");
+                });
+
+            modelBuilder.Entity("Globly.Api.Data.Entities.PushDevice", b =>
+                {
+                    b.Property<string>("Fid")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Fid");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PushDevices");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -487,6 +558,39 @@ namespace Globly.Api.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Globly.Api.Data.Entities.Notification", b =>
+                {
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Globly.Api.Data.Entities.Comment", "Comment")
+                        .WithMany()
+                        .HasForeignKey("CommentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Globly.Api.Data.Entities.Post", "Post")
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Actor");
+
+                    b.Navigation("Comment");
+
+                    b.Navigation("Post");
+                });
+
             modelBuilder.Entity("Globly.Api.Data.Entities.Post", b =>
                 {
                     b.HasOne("Globly.Api.Data.Entities.MediaFile", "File")
@@ -528,6 +632,15 @@ namespace Globly.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Globly.Api.Data.Entities.PushDevice", b =>
+                {
                     b.HasOne("Globly.Api.Data.Entities.AppUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")

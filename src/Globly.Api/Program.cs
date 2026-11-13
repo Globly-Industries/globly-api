@@ -4,6 +4,7 @@ using Globly.Api.Auth;
 using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Moderation;
+using Globly.Api.Notifications;
 using Globly.Api.Posts;
 using Globly.Api.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -119,6 +120,10 @@ builder.Services.Configure<TurnstileOptions>(config.GetSection(TurnstileOptions.
 builder.Services.AddHttpClient<TurnstileVerifier>(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<PostService>();
 builder.Services.AddScoped<GeoService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.Configure<PushOptions>(config.GetSection(PushOptions.Section));
+builder.Services.AddSingleton<PushQueue>();
+builder.Services.AddHostedService<PushSender>();
 
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));

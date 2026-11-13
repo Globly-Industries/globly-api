@@ -12,6 +12,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<PostVote> PostVotes => Set<PostVote>();
     public DbSet<PostReport> PostReports => Set<PostReport>();
     public DbSet<CaptureTicket> CaptureTickets => Set<CaptureTicket>();
+    public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<PushDevice> PushDevices => Set<PushDevice>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -75,6 +77,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasIndex(t => t.Sha256).IsUnique().HasFilter("\"Sha256\" IS NOT NULL");
             e.HasIndex(t => new { t.UserId, t.IssuedAt });
             e.HasOne<AppUser>().WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Notification>(e =>
+        {
+            e.HasIndex(n => new { n.RecipientId, n.CreatedAt });
+            // Partial index for the unread badge.
+            e.HasIndex(n => n.RecipientId).HasFilter("\"ReadAt\" IS NULL").HasDatabaseName("IX_Notifications_Unread");
+            e.HasOne<AppUser>().WithMany().HasForeignKey(n => n.RecipientId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(n => n.Actor).WithMany().HasForeignKey(n => n.ActorId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(n => n.Post).WithMany().HasForeignKey(n => n.PostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(n => n.Comment).WithMany().HasForeignKey(n => n.CommentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<PushDevice>(e =>
+        {
+            e.HasKey(d => d.Fid);
+            e.Property(d => d.Fid).HasMaxLength(64);
+            e.Property(d => d.Language).HasMaxLength(8);
+            e.HasIndex(d => d.UserId);
+            e.HasOne<AppUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

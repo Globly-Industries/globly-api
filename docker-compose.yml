@@ -46,6 +46,7 @@ services:
       RateLimit__AuthPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
       Admin__UserName: ${ADMIN_USERNAME:-}
       Admin__Password: ${ADMIN_PASSWORD:-}
+      Firebase__Credentials: ${FIREBASE_CREDENTIALS:-}
       # cloudflared reaches the API over this network; trust its CF-Connecting-IP header.
       ReverseProxy__KnownNetworks__0: 172.30.0.0/24
     ports:
