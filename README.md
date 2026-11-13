@@ -58,7 +58,27 @@ no re-encoding). If a file can't be cleaned it is rejected, never stored as it i
 
 ffmpeg is installed in the Docker image. **To upload video or audio when running locally, `ffmpeg` must
 be on PATH** (or set `Media__FfmpegPath`), otherwise those uploads fail with a 500. Files uploaded before
-this was added were not cleaned.
+this was added were not cleaned. `ffprobe` (part of ffmpeg, or `Media__FfprobePath`) is needed too.
+
+## Proof of capture
+
+Media must be captured in the app, on the spot:
+
+- **Capture tickets**: the upload must be the exact file sealed right after capture, and only once.
+- **Media checks** (`CaptureRules.CheckMedia`): length and embedded capture time must fit the ticket window.
+- **Android key attestation** (`Posts/AndroidAttestation.cs`): proves our signed app on a locked phone
+  captured this file at this location. Works without Google Play.
+
+Unattested media (web, old app, rooted phones, scripts) is published hidden for admin review.
+`Capture__RejectUnverified=true` rejects it instead (also blocks media from the web app).
+
+Set the release signing cert, or all media goes to review:
+
+```
+Capture__Attestation__SigningCertSha256__0=<SHA256 line from keytool -list -v -keystore upload.jks>
+```
+
+For debug builds, add the debug key's hash as `__1` in development only.
 
 ## Deploying to the server (Windows + Docker Desktop)
 

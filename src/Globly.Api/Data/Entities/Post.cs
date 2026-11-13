@@ -13,6 +13,8 @@ public enum HiddenReason
     Admin = 3,
     /// <summary>Hidden automatically: the NSFW filter is nearly sure the media is explicit.</summary>
     Automatic = 4,
+    /// <summary>Media not attested as captured in the Android app; waits for review.</summary>
+    Unverified = 5,
 }
 
 public enum MediaType

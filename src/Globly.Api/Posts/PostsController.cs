@@ -24,6 +24,8 @@ public class PostsController(
     IMediaSanitizer sanitizer,
     IContentModerator moderator,
     IOptions<CaptureOptions> captureOptions,
+    AttestationRevocations revocations,
+    ILogger<PostsController> logger,
     NsfwScanSignal nsfwScan) : ControllerBase
 {
     private const int MaxPageSize = 50;
@@ -106,6 +108,7 @@ public class PostsController(
         try
         {
             MediaFile? file = null;
+            var verified = true;
             if (form.MediaType == MediaType.Text)
             {
                 if (form.File is not null)
@@ -122,9 +125,15 @@ public class PostsController(
                 var fileCheck = moderator.CheckFile(form.MediaType, contentType, form.File.Length);
                 if (!fileCheck.Allowed) return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, fileCheck.Code!, fileCheck.Reason!);
 
-                var captureProblem = await ClaimCaptureAsync(form, userId, ct);
+                var (captureProblem, claimedTicket) = await ClaimCaptureAsync(form, userId, ct);
                 if (captureProblem != CaptureProblem.None) return CapturesController.CaptureProblemResult(this, captureProblem);
                 claimedCapture = form.CaptureId;
+
+                var ticket = claimedTicket!;
+                verified = await IsAttestedAsync(form, ticket, ct);
+                if (!verified && captureOptions.Value.RejectUnverified)
+                    return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.CaptureUnverified,
+                        "Media can only be posted from the Globly Android app.");
 
                 var ext = Path.GetExtension(form.File.FileName).ToLowerInvariant();
                 if (ext.Length > 10) ext = "";
@@ -144,6 +153,13 @@ public class PostsController(
 
                 await using (clean)
                 {
+                    var mediaProblem = CaptureRules.CheckMedia(ticket, clean.Facts, captureOptions.Value);
+                    if (mediaProblem != CaptureProblem.None)
+                    {
+                        logger.LogInformation("Capture {CaptureId} rejected: {Problem} ({Facts})", ticket.Id, mediaProblem, clean.Facts);
+                        return CapturesController.CaptureProblemResult(this, mediaProblem);
+                    }
+
                     await storage.UploadAsync(key, clean.Content, contentType, ct);
 
                     file = new MediaFile
@@ -166,6 +182,12 @@ public class PostsController(
                 Location = GeoService.ToPoint(form.Latitude, form.Longitude),
                 LocationRadiusMeters = form.LocationRadiusMeters,
             };
+            if (!verified)
+            {
+                post.IsHidden = true;
+                post.HiddenReason = HiddenReason.Unverified;
+                post.HiddenAt = DateTime.UtcNow;
+            }
             db.Posts.Add(post);
 
             try
@@ -231,9 +253,9 @@ public class PostsController(
     /// Checks that the upload is exactly the file sealed on its capture ticket, then marks the ticket
     /// used. Claiming is a single conditional update, so two uploads of one capture cannot both pass.
     /// </summary>
-    private async Task<CaptureProblem> ClaimCaptureAsync(CreatePostForm form, string userId, CancellationToken ct)
+    private async Task<(CaptureProblem, CaptureTicket?)> ClaimCaptureAsync(CreatePostForm form, string userId, CancellationToken ct)
     {
-        if (form.CaptureId is not { } captureId) return CaptureProblem.NotFound;
+        if (form.CaptureId is not { } captureId) return (CaptureProblem.NotFound, null);
 
         string sha256;
         await using (var raw = form.File!.OpenReadStream())
@@ -242,11 +264,36 @@ public class PostsController(
         var ticket = await db.CaptureTickets.AsNoTracking().FirstOrDefaultAsync(t => t.Id == captureId, ct);
         var now = DateTime.UtcNow;
         var problem = CaptureRules.CheckPublish(ticket, userId, form.MediaType, sha256, now, captureOptions.Value);
-        if (problem != CaptureProblem.None) return problem;
+        if (problem != CaptureProblem.None) return (problem, null);
 
         var claimed = await db.CaptureTickets.Where(t => t.Id == captureId && t.UsedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct);
-        return claimed == 1 ? CaptureProblem.None : CaptureProblem.Used;
+        return claimed == 1 ? (CaptureProblem.None, ticket) : (CaptureProblem.Used, null);
+    }
+
+    /// <summary>Whether the Android app attested this file, ticket and location.</summary>
+    private async Task<bool> IsAttestedAsync(CreatePostForm form, CaptureTicket ticket, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(form.Attestation)) return false;
+
+        List<byte[]> chain;
+        try
+        {
+            chain = form.Attestation.Split(',').Select(Convert.FromBase64String).ToList();
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        var revoked = await revocations.GetAsync(ct);
+        var challenge = AndroidAttestation.Challenge(ticket.Id, ticket.Sha256!, form.Latitude, form.Longitude);
+        var problem = AndroidAttestation.Verify(
+            chain, challenge, captureOptions.Value.Attestation, AndroidAttestation.GoogleRootKeys, revoked.Contains);
+        if (problem == AttestationProblem.None) return true;
+
+        logger.LogInformation("Capture {CaptureId} not attested: {Problem}", ticket.Id, problem);
+        return false;
     }
 
     private bool CanModify(Post post) => post.UserId == User.GetUserId() || User.IsInRole(Roles.Admin);

@@ -99,6 +99,8 @@ builder.Services.AddRateLimiter(o =>
 builder.Services.Configure<StorageOptions>(config.GetSection(StorageOptions.Section));
 builder.Services.Configure<ModerationOptions>(config.GetSection(ModerationOptions.Section));
 builder.Services.Configure<CaptureOptions>(config.GetSection(CaptureOptions.Section));
+builder.Services.AddHttpClient(nameof(AttestationRevocations), c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddSingleton<AttestationRevocations>();
 var storageProvider = config[$"{StorageOptions.Section}:Provider"] ?? "Local";
 if (storageProvider.Equals("R2", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddSingleton<IMediaStorage, R2MediaStorage>();

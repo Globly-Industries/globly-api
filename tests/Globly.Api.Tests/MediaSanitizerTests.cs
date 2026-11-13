@@ -104,6 +104,51 @@ public class MediaSanitizerTests
     }
 
     [Fact]
+    public async Task Photo_capture_time_is_read_before_the_metadata_goes()
+    {
+        using var image = new MagickImage(MagickColors.Red, 10, 10);
+        var exif = new ExifProfile();
+        exif.SetValue(ExifTag.DateTimeOriginal, "2026:11:13 14:30:00");
+        exif.SetValue(ExifTag.OffsetTimeOriginal, "+02:00");
+        image.SetProfile(exif);
+        image.Format = MagickFormat.Jpeg;
+
+        await using var clean = await Sanitizer.SanitizeAsync(
+            MediaType.Image, "image/jpeg", new MemoryStream(image.ToByteArray()), CancellationToken.None);
+
+        Assert.Equal(new DateTime(2026, 11, 13, 12, 30, 0, DateTimeKind.Utc), clean.Facts.CapturedAt);
+        Assert.True(clean.Facts.CapturedAtIsUtc);
+    }
+
+    [Fact]
+    public void Photo_capture_time_without_offset_is_local()
+    {
+        using var image = new MagickImage(MagickColors.Red, 10, 10);
+        var exif = new ExifProfile();
+        exif.SetValue(ExifTag.DateTimeOriginal, "2026:11:13 14:30:00");
+        image.SetProfile(exif);
+
+        var facts = MediaSanitizer.ImageFacts(image);
+
+        Assert.Equal(new DateTime(2026, 11, 13, 14, 30, 0), facts.CapturedAt);
+        Assert.False(facts.CapturedAtIsUtc);
+    }
+
+    [Fact]
+    public void Probe_output_gives_duration_and_creation_time()
+    {
+        var facts = MediaSanitizer.ParseProbe(
+            """{"format":{"duration":"12.480000","tags":{"creation_time":"2026-11-13T10:00:00.000000Z"}}}""");
+        Assert.Equal(TimeSpan.FromSeconds(12.48), facts.Duration);
+        Assert.Equal(new DateTime(2026, 11, 13, 10, 0, 0, DateTimeKind.Utc), facts.CapturedAt);
+
+        // Unset clocks write 1970; WAV from a browser has neither.
+        Assert.Null(MediaSanitizer.ParseProbe("""{"format":{"tags":{"creation_time":"1970-01-01T00:00:00Z"}}}""").CapturedAt);
+        Assert.Equal(MediaFacts.None, MediaSanitizer.ParseProbe("""{"format":{}}"""));
+        Assert.Equal(MediaFacts.None, MediaSanitizer.ParseProbe("not json"));
+    }
+
+    [Fact]
     public async Task Unknown_image_types_are_rejected()
     {
         await Assert.ThrowsAsync<MediaRejectedException>(
@@ -185,6 +230,19 @@ public class MediaSanitizerTests
 
         // The rotation lives in the track header, not in the removed metadata.
         Assert.Equal("rotation=90", await RotationOf(output));
+    }
+
+    [FfmpegFact]
+    public async Task Video_duration_and_creation_time_are_read_before_the_metadata_goes()
+    {
+        var input = await Generate(".mp4",
+            "-f", "lavfi", "-i", "testsrc=duration=3:size=64x64:rate=5", "-c:v", "mpeg4",
+            "-metadata", "creation_time=2026-11-13T10:00:00Z");
+
+        await using var clean = await Sanitizer.SanitizeAsync(MediaType.Video, "video/mp4", new MemoryStream(input), CancellationToken.None);
+
+        Assert.InRange(clean.Facts.Duration!.Value.TotalSeconds, 2.5, 3.5);
+        Assert.Equal(new DateTime(2026, 11, 13, 10, 0, 0, DateTimeKind.Utc), clean.Facts.CapturedAt);
     }
 
     [FfmpegFact]

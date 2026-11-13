@@ -41,6 +41,8 @@ services:
       Storage__R2__Bucket: ${R2_BUCKET:-globly-media}
       Turnstile__SiteKey: ${TURNSTILE_SITE_KEY:-}
       Turnstile__SecretKey: ${TURNSTILE_SECRET_KEY:-}
+      Capture__Attestation__SigningCertSha256__0: ${ANDROID_SIGNING_CERT_SHA256:-}
+      Capture__RejectUnverified: ${REJECT_UNVERIFIED_MEDIA:-false}
       RateLimit__AuthPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
       Admin__UserName: ${ADMIN_USERNAME:-}
       Admin__Password: ${ADMIN_PASSWORD:-}

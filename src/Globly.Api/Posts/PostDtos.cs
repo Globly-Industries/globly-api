@@ -63,6 +63,10 @@ public class CreatePostForm
 
     /// <summary>The sealed capture ticket of File (see CapturesController). Required with a file.</summary>
     public Guid? CaptureId { get; set; }
+
+    /// <summary>Android attestation chain: base64 DER certs, comma separated, leaf first.</summary>
+    [StringLength(64 * 1024)]
+    public string? Attestation { get; set; }
 }
 
 public record UpdatePostRequest(

@@ -21,6 +21,7 @@ public static class ErrorCodes
     public const string CannotDeleteSelf = "cannot_delete_self";
     public const string CaptureInvalid = "capture_invalid";
     public const string CaptureExpired = "capture_expired";
+    public const string CaptureUnverified = "capture_unverified";
 }
 
 public static class ProblemExtensions

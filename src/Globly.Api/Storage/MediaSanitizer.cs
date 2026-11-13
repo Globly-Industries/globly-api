@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Text.Json;
 using Globly.Api.Data.Entities;
 using ImageMagick;
 using Microsoft.Extensions.Options;
@@ -12,16 +14,28 @@ public class MediaOptions
     /// <summary>ffmpeg executable. It is installed in the Docker image; for local runs it must be on PATH.</summary>
     public string FfmpegPath { get; set; } = "ffmpeg";
 
+    public string FfprobePath { get; set; } = "ffprobe";
+
     public int FfmpegTimeoutSeconds { get; set; } = 180;
 }
 
 /// <summary>The upload could not be read as the media type it claims to be.</summary>
 public class MediaRejectedException(string message, Exception? inner = null) : Exception(message, inner);
 
+/// <summary>Capture info read from the file before metadata is stripped. CapturedAtIsUtc: false if the zone is unknown.</summary>
+public record MediaFacts(TimeSpan? Duration = null, DateTime? CapturedAt = null, bool CapturedAtIsUtc = false)
+{
+    public static readonly MediaFacts None = new();
+
+    /// <summary>Ignores unset-clock dates (1904, 1970).</summary>
+    public static DateTime? Plausible(DateTime? time) => time?.Year >= 2001 ? time : null;
+}
+
 /// <summary>A cleaned copy of an upload, in a temporary file that is deleted on dispose.</summary>
-public sealed class SanitizedMedia(FileStream content) : IAsyncDisposable
+public sealed class SanitizedMedia(FileStream content, MediaFacts? facts = null) : IAsyncDisposable
 {
     public Stream Content => content;
+    public MediaFacts Facts { get; } = facts ?? MediaFacts.None;
     public long Length => content.Length;
     public ValueTask DisposeAsync() => content.DisposeAsync();
 }
@@ -105,6 +119,7 @@ public class MediaSanitizer : IMediaSanitizer
         try
         {
             using var frames = new MagickImageCollection(input, new MagickReadSettings { Format = format });
+            var facts = frames.Count > 0 ? ImageFacts(frames[0]) : MediaFacts.None;
             foreach (var frame in frames)
             {
                 // Turns the pixels upright first: stripping also drops the tag saying how to rotate them.
@@ -115,7 +130,7 @@ public class MediaSanitizer : IMediaSanitizer
             }
             frames.Write(output);
             output.Position = 0;
-            return new SanitizedMedia(output);
+            return new SanitizedMedia(output, facts);
         }
         catch (MagickException ex)
         {
@@ -127,6 +142,25 @@ public class MediaSanitizer : IMediaSanitizer
             output.Dispose();
             throw;
         }
+    }
+
+    /// <summary>EXIF DateTimeOriginal, plus OffsetTimeOriginal if present.</summary>
+    public static MediaFacts ImageFacts(IMagickImage image)
+    {
+        var exif = image.GetExifProfile();
+        var taken = exif?.GetValue(ExifTag.DateTimeOriginal)?.Value;
+        if (taken is null || !DateTime.TryParseExact(taken.Trim('\0', ' '), "yyyy:MM:dd HH:mm:ss",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var local))
+            return MediaFacts.None;
+
+        var offset = exif?.GetValue(ExifTag.OffsetTimeOriginal)?.Value?.Trim('\0', ' ');
+        if (offset is { Length: > 0 } && TimeSpan.TryParseExact(offset.TrimStart('+', '-'), @"hh\:mm",
+                CultureInfo.InvariantCulture, out var span))
+        {
+            var utc = local - (offset[0] == '-' ? -span : span);
+            return new MediaFacts(CapturedAt: MediaFacts.Plausible(DateTime.SpecifyKind(utc, DateTimeKind.Utc)), CapturedAtIsUtc: true);
+        }
+        return new MediaFacts(CapturedAt: MediaFacts.Plausible(DateTime.SpecifyKind(local, DateTimeKind.Utc)));
     }
 
     private async Task<SanitizedMedia> SanitizeStreamAsync(string contentType, Stream input, CancellationToken ct)
@@ -142,6 +176,7 @@ public class MediaSanitizer : IMediaSanitizer
             await using (var file = File.Create(inputPath))
                 await input.CopyToAsync(file, ct);
 
+            var facts = await ProbeAsync(format.Input, inputPath, ct);
             await RunFfmpegAsync(format.Input, inputPath, outputPath, ct);
 
             if (!File.Exists(outputPath) || new FileInfo(outputPath).Length == 0)
@@ -150,7 +185,7 @@ public class MediaSanitizer : IMediaSanitizer
             // On Linux an open file stays readable after being unlinked; DeleteOnClose handles it either way.
             return new SanitizedMedia(new FileStream(
                 outputPath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81920,
-                FileOptions.Asynchronous | FileOptions.DeleteOnClose));
+                FileOptions.Asynchronous | FileOptions.DeleteOnClose), facts);
         }
         catch
         {
@@ -160,6 +195,70 @@ public class MediaSanitizer : IMediaSanitizer
         finally
         {
             DeleteQuietly(inputPath);
+        }
+    }
+
+    /// <summary>Duration and creation_time via ffprobe; none if unreadable.</summary>
+    private async Task<MediaFacts> ProbeAsync(string inputFormat, string inputPath, CancellationToken ct)
+    {
+        var start = new ProcessStartInfo(_options.FfprobePath)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var arg in new[]
+                 {
+                     "-v", "error", "-protocol_whitelist", "file", "-f", inputFormat,
+                     "-show_entries", "format=duration:format_tags=creation_time", "-of", "json", inputPath,
+                 })
+            start.ArgumentList.Add(arg);
+
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+        _ = process.StandardError.ReadToEndAsync(CancellationToken.None);
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(_options.FfmpegTimeoutSeconds));
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            ct.ThrowIfCancellationRequested();
+            throw new MediaRejectedException("Processing the media file took too long.");
+        }
+        return process.ExitCode == 0 ? ParseProbe(await output) : MediaFacts.None;
+    }
+
+    public static MediaFacts ParseProbe(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("format", out var format)) return MediaFacts.None;
+
+            TimeSpan? duration = null;
+            if (format.TryGetProperty("duration", out var d) &&
+                double.TryParse(d.GetString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var seconds) &&
+                double.IsFinite(seconds) && seconds >= 0)
+                duration = TimeSpan.FromSeconds(Math.Min(seconds, TimeSpan.MaxValue.TotalSeconds / 2));
+
+            DateTime? created = null;
+            if (format.TryGetProperty("tags", out var tags) && tags.TryGetProperty("creation_time", out var c) &&
+                DateTime.TryParse(c.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var time))
+                created = MediaFacts.Plausible(time);
+
+            // Some phones write local time here, so not trusted as UTC.
+            return new MediaFacts(duration, created);
+        }
+        catch (JsonException)
+        {
+            return MediaFacts.None;
         }
     }
 

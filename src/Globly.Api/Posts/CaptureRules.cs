@@ -1,4 +1,5 @@
 using Globly.Api.Data.Entities;
+using Globly.Api.Storage;
 
 namespace Globly.Api.Posts;
 
@@ -18,6 +19,14 @@ public class CaptureOptions
     /// <summary>Tickets one user may ask for per hour.</summary>
     public int MaxTicketsPerHour { get; set; } = 60;
 
+    /// <summary>Allowed clock skew for capture times written in media.</summary>
+    public int MediaClockToleranceMinutes { get; set; } = 10;
+
+    /// <summary>Reject unattested media instead of hiding it for review (also blocks web).</summary>
+    public bool RejectUnverified { get; set; }
+
+    public AttestationOptions Attestation { get; set; } = new();
+
     public TimeSpan SealWindow => TimeSpan.FromMinutes(SealWindowMinutes);
     public TimeSpan PublishWindow => TimeSpan.FromMinutes(PublishWindowMinutes);
 }
@@ -35,6 +44,8 @@ public enum CaptureProblem
     WrongType,
     /// <summary>The uploaded file is not the one that was sealed.</summary>
     HashMismatch,
+    TooLong,
+    NotFresh,
 }
 
 /// <summary>The timing and ownership rules for capture tickets. Pure, so they are easy to test.</summary>
@@ -60,6 +71,28 @@ public static class CaptureRules
         if (ticket.MediaType != type) return CaptureProblem.WrongType;
         if (now - ticket.SealedAt.Value > o.PublishWindow) return CaptureProblem.Expired;
         if (ticket.Sha256 != sha256) return CaptureProblem.HashMismatch;
+        return CaptureProblem.None;
+    }
+
+    private static readonly TimeSpan DurationSlack = TimeSpan.FromSeconds(5);
+
+    private static readonly TimeSpan AnyTimeZone = TimeSpan.FromHours(14);
+
+    /// <summary>Media length and embedded capture time must fit the ticket's window.</summary>
+    public static CaptureProblem CheckMedia(CaptureTicket ticket, MediaFacts facts, CaptureOptions o)
+    {
+        var sealedAt = ticket.SealedAt ?? throw new ArgumentException("The ticket is not sealed.", nameof(ticket));
+        if (facts.Duration is { } duration && duration > sealedAt - ticket.IssuedAt + DurationSlack)
+            return CaptureProblem.TooLong;
+
+        if (facts.CapturedAt is { } capturedAt)
+        {
+            var tolerance = TimeSpan.FromMinutes(o.MediaClockToleranceMinutes);
+            // No offset: could be local time in any zone.
+            if (!facts.CapturedAtIsUtc) tolerance += AnyTimeZone;
+            if (capturedAt < ticket.IssuedAt - tolerance || capturedAt > sealedAt + tolerance)
+                return CaptureProblem.NotFresh;
+        }
         return CaptureProblem.None;
     }
 

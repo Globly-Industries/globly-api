@@ -88,6 +88,8 @@ public class CapturesController(AppDbContext db, IOptions<CaptureOptions> option
     {
         CaptureProblem.Expired => c.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.CaptureExpired,
             "This capture is too old. Capture it again."),
+        CaptureProblem.TooLong or CaptureProblem.NotFresh => c.ProblemWithCode(StatusCodes.Status422UnprocessableEntity,
+            ErrorCodes.CaptureInvalid, $"This media was not captured just now in the app ({problem})."),
         _ => c.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.CaptureInvalid,
             $"The media could not be verified as captured in the app ({problem})."),
     };
