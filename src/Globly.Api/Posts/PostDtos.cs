@@ -69,7 +69,7 @@ public class CreatePostForm
     public string? Attestation { get; set; }
 
     /// <summary>Why the app couldn't attest, for the logs.</summary>
-    [StringLength(300)]
+    [StringLength(1000)]
     public string? AttestationError { get; set; }
 }
 
