@@ -11,10 +11,12 @@ public record RegisterDeviceRequest(
     [Required, StringLength(64, MinimumLength = 1)] string Fid,
     [StringLength(8)] string? Language);
 
+public record DeviceErrorRequest([Required, StringLength(2000)] string Message);
+
 [ApiController]
 [Route("api/devices")]
 [Authorize]
-public class DevicesController(AppDbContext db) : ControllerBase
+public class DevicesController(AppDbContext db, ILogger<DevicesController> logger) : ControllerBase
 {
     /// <summary>Registers the device for the caller's pushes; a device last used by someone else moves over.</summary>
     [HttpPut]
@@ -35,6 +37,15 @@ public class DevicesController(AppDbContext db) : ControllerBase
             device.UpdatedAt = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+        logger.LogInformation("Push device {Fid} registered for user {UserId}", req.Fid, userId);
+        return NoContent();
+    }
+
+    /// <summary>The app couldn't set up push on this device; logged so it can be diagnosed.</summary>
+    [HttpPost("error")]
+    public IActionResult ReportError(DeviceErrorRequest req)
+    {
+        logger.LogWarning("Push registration failed on a device of user {UserId}: {Message}", User.RequireUserId(), req.Message);
         return NoContent();
     }
 }

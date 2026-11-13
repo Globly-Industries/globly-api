@@ -91,7 +91,11 @@ public sealed class PushSender(
         if (n is null) return; // Comment deleted meanwhile.
 
         var devices = await db.PushDevices.AsNoTracking().Where(d => d.UserId == n.RecipientId).ToListAsync(ct);
-        if (devices.Count == 0) return;
+        if (devices.Count == 0)
+        {
+            logger.LogInformation("Push for notification {Id} skipped: user {UserId} has no registered devices", id, n.RecipientId);
+            return;
+        }
 
         var body = n.Body.Length > MaxBodyLength ? n.Body[..MaxBodyLength] + "…" : n.Body;
         var messages = devices.Select(d => new Message
@@ -109,12 +113,17 @@ public sealed class PushSender(
 
         var result = await messaging.SendEachAsync(messages, ct);
 
-        var dead = result.Responses
-            .Select((r, i) => (r, devices[i].Fid))
-            .Where(x => !x.r.IsSuccess && x.r.Exception?.MessagingErrorCode is
-                MessagingErrorCode.Unregistered or MessagingErrorCode.SenderIdMismatch or MessagingErrorCode.InvalidArgument)
-            .Select(x => x.Fid)
-            .ToList();
+        logger.LogInformation("Push for notification {Id}: {Sent}/{Total} sent", id, result.SuccessCount, devices.Count);
+        var dead = new List<string>();
+        for (var i = 0; i < devices.Count; i++)
+        {
+            var error = result.Responses[i].Exception;
+            if (error is null) continue;
+            logger.LogWarning("Push to device {Fid} failed: {Code} {Message}", devices[i].Fid, error.MessagingErrorCode, error.Message);
+            // InvalidArgument isn't here: it can also mean a bad message, which must not drop the device.
+            if (error.MessagingErrorCode is MessagingErrorCode.Unregistered or MessagingErrorCode.SenderIdMismatch)
+                dead.Add(devices[i].Fid);
+        }
         if (dead.Count > 0)
             await db.PushDevices.Where(d => dead.Contains(d.Fid)).ExecuteDeleteAsync(ct);
     }
