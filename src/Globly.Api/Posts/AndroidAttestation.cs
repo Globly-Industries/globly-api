@@ -193,7 +193,8 @@ public static class AndroidAttestation
 
     private static bool IsSignedBy(byte[] certificate, X509Certificate2 issuer)
     {
-        var cert = new AsnReader(certificate, AsnEncodingRules.DER).ReadSequence();
+        // BER: some TEEs write leaf certs that aren't strict DER; the signed bytes are taken as-is.
+        var cert = new AsnReader(certificate, AsnEncodingRules.BER).ReadSequence();
         var tbs = cert.ReadEncodedValue().ToArray();
         var algorithm = cert.ReadSequence().ReadObjectIdentifier();
         var signature = cert.ReadBitString(out _);
