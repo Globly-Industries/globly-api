@@ -67,6 +67,10 @@ public class CreatePostForm
     /// <summary>Android attestation chain: base64 DER certs, comma separated, leaf first.</summary>
     [StringLength(64 * 1024)]
     public string? Attestation { get; set; }
+
+    /// <summary>Why the app couldn't attest, for the logs.</summary>
+    [StringLength(300)]
+    public string? AttestationError { get; set; }
 }
 
 public record UpdatePostRequest(

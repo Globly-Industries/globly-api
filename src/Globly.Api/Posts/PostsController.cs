@@ -108,7 +108,7 @@ public class PostsController(
         try
         {
             MediaFile? file = null;
-            var verified = true;
+            string? unverifiedReason = null;
             if (form.MediaType == MediaType.Text)
             {
                 if (form.File is not null)
@@ -130,10 +130,13 @@ public class PostsController(
                 claimedCapture = form.CaptureId;
 
                 var ticket = claimedTicket!;
-                verified = await IsAttestedAsync(form, ticket, ct);
-                if (!verified && captureOptions.Value.RejectUnverified)
+                unverifiedReason = await CheckAttestationAsync(form, ticket, ct);
+                if (unverifiedReason is not null && captureOptions.Value.RejectUnverified)
+                {
+                    logger.LogInformation("Capture {CaptureId} rejected as unverified: {Reason}", ticket.Id, unverifiedReason);
                     return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.CaptureUnverified,
                         "Media can only be posted from the Globly Android app.");
+                }
 
                 var ext = Path.GetExtension(form.File.FileName).ToLowerInvariant();
                 if (ext.Length > 10) ext = "";
@@ -182,7 +185,7 @@ public class PostsController(
                 Location = GeoService.ToPoint(form.Latitude, form.Longitude),
                 LocationRadiusMeters = form.LocationRadiusMeters,
             };
-            if (!verified)
+            if (unverifiedReason is not null)
             {
                 post.IsHidden = true;
                 post.HiddenReason = HiddenReason.Unverified;
@@ -200,6 +203,9 @@ public class PostsController(
                 throw;
             }
             published = true;
+            if (unverifiedReason is not null)
+                logger.LogInformation("Post {PostId} hidden as unverified (capture {CaptureId}): {Reason}",
+                    post.Id, form.CaptureId, unverifiedReason);
             if (file is not null) nsfwScan.Notify();
 
             var dto = await posts.GetDtoAsync(post.Id, userId, ct);
@@ -271,10 +277,11 @@ public class PostsController(
         return claimed == 1 ? (CaptureProblem.None, ticket) : (CaptureProblem.Used, null);
     }
 
-    /// <summary>Whether the Android app attested this file, ticket and location.</summary>
-    private async Task<bool> IsAttestedAsync(CreatePostForm form, CaptureTicket ticket, CancellationToken ct)
+    /// <summary>Null if the Android app attested this file, ticket and location; otherwise why not.</summary>
+    private async Task<string?> CheckAttestationAsync(CreatePostForm form, CaptureTicket ticket, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(form.Attestation)) return false;
+        if (string.IsNullOrEmpty(form.Attestation))
+            return $"Missing (app: {(string.IsNullOrWhiteSpace(form.AttestationError) ? "none given, old app?" : form.AttestationError)})";
 
         List<byte[]> chain;
         try
@@ -283,17 +290,14 @@ public class PostsController(
         }
         catch (FormatException)
         {
-            return false;
+            return nameof(AttestationProblem.Malformed);
         }
 
         var revoked = await revocations.GetAsync(ct);
         var challenge = AndroidAttestation.Challenge(ticket.Id, ticket.Sha256!, form.Latitude, form.Longitude);
         var problem = AndroidAttestation.Verify(
             chain, challenge, captureOptions.Value.Attestation, AndroidAttestation.GoogleRootKeys, revoked.Contains);
-        if (problem == AttestationProblem.None) return true;
-
-        logger.LogInformation("Capture {CaptureId} not attested: {Problem}", ticket.Id, problem);
-        return false;
+        return problem == AttestationProblem.None ? null : problem.ToString();
     }
 
     private bool CanModify(Post post) => post.UserId == User.GetUserId() || User.IsInRole(Roles.Admin);
