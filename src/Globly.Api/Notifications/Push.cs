@@ -86,7 +86,7 @@ public sealed class PushSender(
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var n = await db.Notifications.AsNoTracking().Where(x => x.Id == id)
-            .Select(x => new { x.Id, x.RecipientId, x.Type, x.PostId, Actor = x.Actor!.UserName!, Body = x.Comment!.Body })
+            .Select(x => new { x.Id, x.RecipientId, x.Type, x.PostId, x.CreatedAt, Actor = x.Actor!.UserName!, Body = x.Comment!.Body })
             .FirstOrDefaultAsync(ct);
         if (n is null) return; // Comment deleted meanwhile.
 
@@ -107,8 +107,16 @@ public sealed class PushSender(
                 ["notificationId"] = n.Id.ToString(),
                 ["postId"] = n.PostId.ToString(),
             },
-            // Same tag per post: new comments replace the old push instead of piling up.
-            Android = new AndroidConfig { Notification = new AndroidNotification { Tag = n.PostId.ToString() } },
+            Android = new AndroidConfig
+            {
+                Notification = new AndroidNotification
+                {
+                    // Same tag per post: new comments replace the old push instead of piling up.
+                    Tag = n.PostId.ToString(),
+                    // Must be set: the SDK otherwise sends DateTime.MinValue, shown as year 1.
+                    EventTimestamp = DateTime.SpecifyKind(n.CreatedAt, DateTimeKind.Utc),
+                },
+            },
         }).ToList();
 
         var result = await messaging.SendEachAsync(messages, ct);
