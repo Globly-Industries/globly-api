@@ -49,9 +49,11 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
         {
             db.PostVotes.Add(new PostVote { PostId = postId, UserId = userId, Value = (short)req.Value });
         }
-        else
+        else if (vote.Value != req.Value)
         {
             vote.Value = (short)req.Value;
+            // A like dates from when it was given (Following tab).
+            vote.CreatedAt = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
         if (req.Value == 1) await points.CreditLikeAsync(target, userId, ct);

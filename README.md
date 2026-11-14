@@ -126,14 +126,19 @@ Cloudflare's always-pass test keys (`appsettings.Development.json`).
 `GET /api/posts/feed?tab=Recent|Nearby|Following` ranks posts with `Posts/FeedRanking.cs`
 (newest 1000 candidates per tab; nearby takes the closest 1000 within `radiusKm`):
 
-| Tab       | Likes (net votes) | Views | Tab signal                         | Followed author |
-|-----------|-------------------|-------|------------------------------------|-----------------|
-| Recent    | 35%               | 15%   | 50% recency (halves every 24 h)    | +15%            |
-| Nearby    | 35%               | 15%   | 50% closeness (halves at radius/10) | +15%           |
-| Following | 25%               | 10%   | 65% recency                        | (all followed)  |
+| Tab       | Likes (net votes) | Views | Tab signal                         | Followed author | Liked by follows |
+|-----------|-------------------|-------|------------------------------------|-----------------|------------------|
+| Recent    | 35%               | 15%   | 50% recency (halves every 24 h)    | +15%            | up to +10%       |
+| Nearby    | 35%               | 15%   | 50% closeness (halves at radius/10) | +15%           | -                |
+| Following | 25%               | 10%   | 65% recency                        | +15%            | up to +15%       |
 
 Likes and views are log-scaled against the most liked/viewed candidate, so the weights keep their
 meaning as the app grows. Follow and unfollow with `PUT`/`DELETE /api/users/{id}/follow`.
+
+Following shows the newest 1000 posts by people you follow plus the 1000 posts they liked most
+recently (not your own, nor ones you voted on). A liked post's recency counts from the latest
+like. "Liked by follows" is log-scaled and counts fully at 3 people. Feeds return `likedBy` (names and
+count) for the label. Users opt out with `PUT /api/users/me/share-likes` (`AspNetUsers.ShareLikes`).
 
 ## Points and Spotlight
 Authors earn 1 point the first time each other user likes one of their visible posts

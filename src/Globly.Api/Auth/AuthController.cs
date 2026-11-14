@@ -18,7 +18,7 @@ public record AuthRequest(
 /// <summary>Public settings the app needs before signing in.</summary>
 public record AuthConfigDto(string? CaptchaSiteKey);
 
-public record UserDto(string Id, string UserName, bool IsAdmin, DateTime CreatedAt, string? AvatarUrl = null);
+public record UserDto(string Id, string UserName, bool IsAdmin, DateTime CreatedAt, string? AvatarUrl = null, bool ShareLikes = true);
 
 public record AuthResponse(string Token, DateTime ExpiresAt, UserDto User);
 
@@ -85,11 +85,11 @@ public class AuthController(UserManager<AppUser> users, TokenService tokens, Tur
     {
         var roles = await users.GetRolesAsync(user);
         var (token, expires) = tokens.Create(user, roles);
-        return new AuthResponse(token, expires, new UserDto(user.Id, user.UserName!, roles.Contains(Roles.Admin), user.CreatedAt, storage.AvatarUrl(user.AvatarKey)));
+        return new AuthResponse(token, expires, new UserDto(user.Id, user.UserName!, roles.Contains(Roles.Admin), user.CreatedAt, storage.AvatarUrl(user.AvatarKey), user.ShareLikes));
     }
 
     private async Task<UserDto> ToDto(AppUser user) =>
-        new(user.Id, user.UserName!, await users.IsInRoleAsync(user, Roles.Admin), user.CreatedAt, storage.AvatarUrl(user.AvatarKey));
+        new(user.Id, user.UserName!, await users.IsInRoleAsync(user, Roles.Admin), user.CreatedAt, storage.AvatarUrl(user.AvatarKey), user.ShareLikes);
 
     private static Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary ToModelState(IdentityResult result)
     {

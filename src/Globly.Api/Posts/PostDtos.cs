@@ -38,7 +38,12 @@ public record PostDto(
     DateTime? SpotlightUntil = null,
     int AwardCount = 0,
     /// <summary>Whether the caller gave this post an award.</summary>
-    bool MyAward = false);
+    bool MyAward = false,
+    /// <summary>Feeds only: people the caller follows who liked this post.</summary>
+    LikedByDto? LikedBy = null);
+
+/// <summary>The latest few names, newest first, and how many liked it in all.</summary>
+public record LikedByDto(IReadOnlyList<string> UserNames, int Count);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, bool HasMore);
 

@@ -23,7 +23,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
 
         b.HasPostgresExtension("postgis");
 
-        b.Entity<AppUser>(e => e.Property(u => u.AvatarKey).HasMaxLength(300));
+        b.Entity<AppUser>(e =>
+        {
+            e.Property(u => u.AvatarKey).HasMaxLength(300);
+            e.Property(u => u.ShareLikes).HasDefaultValue(true);
+        });
 
         b.Entity<Post>(e =>
         {
@@ -63,6 +67,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
         b.Entity<PostVote>(e =>
         {
             e.HasKey(v => new { v.PostId, v.UserId });
+            // What the people you follow liked lately (Following tab).
+            e.HasIndex(v => new { v.UserId, v.CreatedAt });
             e.HasOne<Post>().WithMany().HasForeignKey(v => v.PostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<AppUser>().WithMany().HasForeignKey(v => v.UserId).OnDelete(DeleteBehavior.Cascade);
         });

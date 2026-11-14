@@ -33,6 +33,8 @@ public record FollowUserDto(
 
 public record AvatarResult(string? AvatarUrl);
 
+public record ShareLikesRequest(bool ShareLikes);
+
 /// <summary>Public user profiles and following.</summary>
 [ApiController]
 [Route("api/users")]
@@ -167,6 +169,16 @@ public class UsersController(
     public async Task<IActionResult> RemoveAvatar(CancellationToken ct)
     {
         await avatars.RemoveAsync(User.RequireUserId(), ct);
+        return NoContent();
+    }
+
+    /// <summary>Whether followers see your likes in their feeds.</summary>
+    [Authorize]
+    [HttpPut("me/share-likes")]
+    public async Task<IActionResult> SetShareLikes(ShareLikesRequest req, CancellationToken ct)
+    {
+        var me = User.RequireUserId();
+        await db.Users.Where(u => u.Id == me).ExecuteUpdateAsync(s => s.SetProperty(u => u.ShareLikes, req.ShareLikes), ct);
         return NoContent();
     }
 

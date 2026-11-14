@@ -13,5 +13,8 @@ public class AppUser : IdentityUser
     /// <summary>Storage key of the profile picture (a square JPEG); null shows initials.</summary>
     public string? AvatarKey { get; set; }
 
+    /// <summary>Whether followers see this user's likes in their feeds.</summary>
+    public bool ShareLikes { get; set; } = true;
+
     public List<Post> Posts { get; set; } = [];
 }

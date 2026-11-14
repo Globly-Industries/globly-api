@@ -6,7 +6,7 @@ public enum FeedTab
     Recent = 0,
     /// <summary>Popular posts, favouring close ones.</summary>
     Nearby = 1,
-    /// <summary>Only posts by people the user follows, favouring new ones.</summary>
+    /// <summary>Posts by people the user follows and posts they liked, favouring new ones.</summary>
     Following = 2,
 }
 
@@ -20,13 +20,15 @@ public record RankCandidate(
     DateTime CreatedAt,
     double? DistanceKm = null,
     bool Spotlit = false,
-    int Awards = 0);
+    int Awards = 0,
+    int FollowedLikes = 0,
+    DateTime? FollowedLikedAt = null);
 
 /// <summary>
 /// How much each signal counts. Likes, Views and Tab add up to 1; FollowBonus is added on top
-/// for posts by people the user follows, SpotlightBonus for spotlit posts.
+/// for posts by people the user follows, FollowedLikes for likes from them, SpotlightBonus for spotlit posts.
 /// </summary>
-public record RankWeights(double Likes, double Views, double Tab, double FollowBonus, double SpotlightBonus);
+public record RankWeights(double Likes, double Views, double Tab, double FollowBonus, double SpotlightBonus, double FollowedLikes = 0);
 
 /// <summary>
 /// Scores feed posts. Every signal is turned into 0-1 (likes -1-1) and weighted:
@@ -39,10 +41,12 @@ public static class FeedRanking
     // Views weigh less than likes: a like is a deliberate choice, a view mostly means the post was shown.
     // The tab's own signal gets half, otherwise an old hit would top "Recent" forever.
     // A spotlight gets a post seen, not liked: about a day of freshness, so a weak post still sinks.
-    public static readonly RankWeights Recent = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15, SpotlightBonus: 0.15);
+    // Likes from people you follow nudge Recent; in Following they bring in posts by others.
+    public static readonly RankWeights Recent = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15, SpotlightBonus: 0.15, FollowedLikes: 0.10);
     public static readonly RankWeights Nearby = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15, SpotlightBonus: 0.15);
-    // Everything here is followed already; people expect this one to be close to chronological.
-    public static readonly RankWeights Following = new(Likes: 0.25, Views: 0.10, Tab: 0.65, FollowBonus: 0, SpotlightBonus: 0);
+    // People expect this one to be close to chronological. A post liked by a few of your follows
+    // ranks with their own posts; with one like it sits a bit below.
+    public static readonly RankWeights Following = new(Likes: 0.25, Views: 0.10, Tab: 0.65, FollowBonus: 0.15, SpotlightBonus: 0, FollowedLikes: 0.15);
 
     public static RankWeights WeightsFor(FeedTab tab) => tab switch
     {
@@ -56,6 +60,8 @@ public static class FeedRanking
     // Scale floors, so in a quiet app one like or a few views don't already count as "the most".
     private const int LikesFloor = 10;
     private const int ViewsFloor = 50;
+    // Likes from this many people you follow count fully.
+    public const int FollowedLikesFloor = 3;
 
     /// <summary>Returns the candidates' ids, best first.</summary>
     public static List<Guid> Rank(
@@ -72,17 +78,22 @@ public static class FeedRanking
         var maxViews = Math.Max(ViewsFloor, candidates.Max(c => c.Views));
 
         return candidates
-            .Select(c => (c.Id, c.CreatedAt, Score:
+            .Select(c => (c.Id, At: ActiveAt(c, tab), Score:
                 w.Likes * LikesSignal(Likes(c), maxLikes)
                 + w.Views * LogScaled(c.Views, maxViews)
-                + w.Tab * (tab == FeedTab.Nearby ? Closeness(c.DistanceKm ?? radiusKm, radiusKm) : Recency(c.CreatedAt, now))
+                + w.Tab * (tab == FeedTab.Nearby ? Closeness(c.DistanceKm ?? radiusKm, radiusKm) : Recency(ActiveAt(c, tab), now))
                 + (followed.Contains(c.AuthorId) ? w.FollowBonus : 0)
+                + w.FollowedLikes * LogScaled(c.FollowedLikes, FollowedLikesFloor)
                 + (c.Spotlit ? w.SpotlightBonus : 0)))
             .OrderByDescending(r => r.Score)
-            .ThenByDescending(r => r.CreatedAt)
+            .ThenByDescending(r => r.At)
             .Select(r => r.Id)
             .ToList();
     }
+
+    /// <summary>In Following, a post liked by someone you follow counts as new from the time of that like.</summary>
+    public static DateTime ActiveAt(RankCandidate c, FeedTab tab) =>
+        tab == FeedTab.Following && c.FollowedLikedAt > c.CreatedAt ? c.FollowedLikedAt.Value : c.CreatedAt;
 
     /// <summary>Net votes, with each award counting as the likes it cost the giver.</summary>
     public static int Likes(RankCandidate c) =>
