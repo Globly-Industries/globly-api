@@ -51,6 +51,23 @@ public class FeedService(AppDbContext db, PostService posts, GeoService geo)
                 break;
         }
 
+        return await RankPageAsync(q, tab, near, userId, likers, page, pageSize, ct);
+    }
+
+    /// <summary>Posts inside a map area (a cluster), ranked like the Recent tab.</summary>
+    public Task<PagedResult<PostDto>> GetAreaPageAsync(
+        MapBoundsDto area, PostFilter f, string? userId, int page, int pageSize, CancellationToken ct)
+    {
+        var q = PostService.ApplyFilter(geo.InArea(area.MinLat, area.MinLng, area.MaxLat, area.MaxLng), f)
+            .OrderByDescending(p => p.CreatedAt)
+            .Take(MaxCandidates);
+        return RankPageAsync(q, FeedTab.Recent, null, userId, Likers(userId), page, pageSize, ct);
+    }
+
+    private async Task<PagedResult<PostDto>> RankPageAsync(
+        IQueryable<Data.Entities.Post> q, FeedTab tab, NearbyQuery? near, string? userId, IQueryable<string> likers,
+        int page, int pageSize, CancellationToken ct)
+    {
         var now = DateTime.UtcNow;
         var rows = await q
             .Select(p => new

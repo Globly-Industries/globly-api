@@ -107,7 +107,8 @@ public record MapQuery(
 
 /// <summary>
 /// A map point. When Count == 1 it is a single post (PostId/MediaType/Title set);
-/// otherwise it is a cluster that the app should render as a bubble and zoom into on tap.
+/// otherwise it is a cluster placed on its best post, whose MediaType it carries.
+/// Score is the feed-style rank of the (best) post, for drawing better posts on top.
 /// </summary>
 public record MapPointDto(
     double Latitude,
@@ -116,4 +117,9 @@ public record MapPointDto(
     Guid? PostId,
     MediaType? MediaType,
     string? Title,
-    int? LocationRadiusMeters = null);
+    int? LocationRadiusMeters = null,
+    double Score = 0,
+    MapBoundsDto? Bounds = null);
+
+/// <summary>The area a cluster's posts cover.</summary>
+public record MapBoundsDto(double MinLat, double MinLng, double MaxLat, double MaxLng);

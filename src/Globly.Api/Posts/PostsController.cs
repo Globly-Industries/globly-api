@@ -39,6 +39,19 @@ public class PostsController(
     public async Task<ActionResult<List<MapPointDto>>> Map([FromQuery] MapQuery q, [FromQuery] PostFilter f, CancellationToken ct)
         => await geo.GetMapPointsAsync(q, f, ct);
 
+    /// <summary>The posts of a map cluster (its bounds), ranked like the Recent feed.</summary>
+    [HttpGet("map/area")]
+    public async Task<ActionResult<PagedResult<PostDto>>> MapArea(
+        [FromQuery] PostFilter f,
+        [Range(-90, 90)] double minLat,
+        [Range(-180, 180)] double minLng,
+        [Range(-90, 90)] double maxLat,
+        [Range(-180, 180)] double maxLng,
+        [Range(1, int.MaxValue)] int page = 1,
+        [Range(1, MaxPageSize)] int pageSize = 20,
+        CancellationToken ct = default)
+        => await feed.GetAreaPageAsync(new(minLat, minLng, maxLat, maxLng), f, User.GetUserId(), page, pageSize, ct);
+
     /// <summary>Posts near a location, ranked like the Nearby feed tab. Kept for older apps.</summary>
     [HttpGet("nearby")]
     public async Task<ActionResult<List<PostDto>>> Nearby(

@@ -56,8 +56,8 @@ public static class FeedRanking
     public const double RecencyHalfLifeHours = 24;
 
     // Scale floors, so in a quiet app one like or a few views don't already count as "the most".
-    private const int LikesFloor = 10;
-    private const int ViewsFloor = 50;
+    public const int LikesFloor = 10;
+    public const int ViewsFloor = 50;
     // Likes from this many people you follow count fully.
     public const int FollowedLikesFloor = 3;
 
