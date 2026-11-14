@@ -9,8 +9,9 @@ public class FeedRankingTests
     private static readonly HashSet<string> NoOne = [];
 
     private static RankCandidate Post(string id, int up = 0, int down = 0, int views = 0, double hoursOld = 0,
-        double? km = null, string author = "a", bool spotlit = false, int awards = 0, int followedLikes = 0, double? likedHoursAgo = null) =>
-        new(Guid.Parse($"00000000-0000-0000-0000-{id.PadLeft(12, '0')}"), author, up, down, views, Now.AddHours(-hoursOld), km, spotlit, awards,
+        double? km = null, string author = "a", bool spotlit = false, int awards = 0, int followedLikes = 0, double? likedHoursAgo = null, double spotlitHoursAgo = 0) =>
+        new(Guid.Parse($"00000000-0000-0000-0000-{id.PadLeft(12, '0')}"), author, up, down, views, Now.AddHours(-hoursOld), km,
+            spotlit ? Now.AddHours(-spotlitHoursAgo) : null, awards,
             followedLikes, likedHoursAgo is { } h ? Now.AddHours(-h) : null);
 
     private static string Short(Guid id) => id.ToString()[^12..].TrimStart('0');
@@ -175,5 +176,27 @@ public class FeedRankingTests
         Assert.Equal(["2", "1"], Rank(FeedTab.Nearby, null,
             Post("1", km: 1, hoursOld: 5, followedLikes: 3),
             Post("2", km: 1, hoursOld: 1)));
+    }
+
+    [Fact]
+    public void Spotlight_makes_an_old_post_new_again_in_Recent()
+    {
+        Assert.Equal(["1", "2"], Rank(FeedTab.Recent, null,
+            Post("1", up: 5, views: 60, hoursOld: 24 * 3, spotlit: true),
+            Post("2", up: 2, views: 20, hoursOld: 1)));
+    }
+
+    [Fact]
+    public void Spotlight_fades_over_its_day()
+    {
+        Assert.Equal(["2", "1"], Rank(FeedTab.Recent, null,
+            Post("1", hoursOld: 24 * 3, spotlit: true, spotlitHoursAgo: 23),
+            Post("2", up: 2, views: 20, hoursOld: 1)));
+    }
+
+    [Fact]
+    public void Nearby_spotlight_beats_some_distance()
+    {
+        Assert.Equal(["1", "2"], Rank(FeedTab.Nearby, null, Post("1", km: 20, spotlit: true), Post("2", km: 5)));
     }
 }

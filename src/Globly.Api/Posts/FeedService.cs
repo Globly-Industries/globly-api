@@ -21,12 +21,13 @@ public class FeedService(AppDbContext db, PostService posts, GeoService geo)
         // Nearby is about the place, so likes from follows don't count there.
         var likers = Likers(tab == FeedTab.Nearby ? null : userId);
 
+        var now = DateTime.UtcNow;
         IQueryable<Data.Entities.Post> q;
         switch (tab)
         {
             case FeedTab.Nearby:
                 // GeoService.Nearby is ordered nearest first, so the cap keeps the closest.
-                q = PostService.ApplyFilter(geo.Nearby(near!.Lat, near.Lng, near.RadiusKm), f).Take(MaxCandidates);
+                q = WithSpotlit(PostService.ApplyFilter(geo.Nearby(near!.Lat, near.Lng, near.RadiusKm), f), now);
                 break;
             case FeedTab.Following:
                 if (userId is null) return new PagedResult<PostDto>([], page, pageSize, false);
@@ -47,11 +48,10 @@ public class FeedService(AppDbContext db, PostService posts, GeoService geo)
                         && !db.PostVotes.Any(v => v.PostId == p.Id && v.UserId == userId)));
                 break;
             default:
-                q = PostService.ApplyFilter(posts.Visible, f).OrderByDescending(p => p.CreatedAt).Take(MaxCandidates);
+                q = WithSpotlit(PostService.ApplyFilter(posts.Visible, f).OrderByDescending(p => p.CreatedAt), now);
                 break;
         }
 
-        var now = DateTime.UtcNow;
         var rows = await q
             .Select(p => new
             {
@@ -66,7 +66,7 @@ public class FeedService(AppDbContext db, PostService posts, GeoService geo)
         var candidates = rows.Select(r => new RankCandidate(
             r.Id, r.UserId, r.Upvotes, r.Downvotes, r.Views, r.CreatedAt,
             near is null ? null : FeedRanking.HaversineKm(near.Lat, near.Lng, r.Location.Y, r.Location.X),
-            r.SpotlightUntil > now,
+            r.SpotlightUntil > now ? r.SpotlightUntil - Points.PointsService.SpotlightDuration : null,
             r.Awards,
             r.FollowedLikes,
             r.FollowedLikedAt)).ToList();
@@ -88,6 +88,13 @@ public class FeedService(AppDbContext db, PostService posts, GeoService geo)
             if (likedBy.TryGetValue(dtos[i].Id, out var lb)) dtos[i] = dtos[i] with { LikedBy = lb };
 
         return new PagedResult<PostDto>(dtos, page, pageSize, hasMore);
+    }
+
+    /// <summary>The first <see cref="MaxCandidates"/> of an ordered query, plus its spotlit posts however far down.</summary>
+    private static IQueryable<Data.Entities.Post> WithSpotlit(IQueryable<Data.Entities.Post> ordered, DateTime now)
+    {
+        var top = ordered.Select(p => p.Id).Take(MaxCandidates);
+        return ordered.Where(p => top.Contains(p.Id) || p.SpotlightUntil > now);
     }
 
     /// <summary>People the user follows who share their likes; none for guests.</summary>

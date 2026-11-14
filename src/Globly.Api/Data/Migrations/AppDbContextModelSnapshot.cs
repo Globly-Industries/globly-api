@@ -401,6 +401,9 @@ namespace Globly.Api.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Location"), "gist");
 
+                    b.HasIndex("SpotlightUntil")
+                        .HasFilter("\"SpotlightUntil\" IS NOT NULL");
+
                     b.HasIndex("UserId", "SpotlightUntil");
 
                     b.ToTable("Posts");

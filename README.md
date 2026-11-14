@@ -145,8 +145,10 @@ Authors earn 1 point the first time each other user likes one of their visible p
 (`PointsLedger`, unique per voter and post), so unliking and liking again earns nothing, and
 downvotes never take points away. `AspNetUsers.Points` is the spendable balance.
 
-`POST /api/posts/{id}/spotlight` spends points to boost one of your own visible posts for 24 h:
-+15% in the Recent and Nearby rankings and a "Spotlight" label. One spotlight at a time; it costs
+`POST /api/posts/{id}/spotlight` spends points to boost one of your own visible posts for 24 h.
+In Recent its recency counts from the start of the spotlight (as if just posted) plus +10%; in
+Nearby it gets +25%. Spotlit posts always join the candidates, however old or far down the list
+they are. The app shows them in gold. One spotlight at a time; it costs
 20 points plus 10 for each spotlight in the last 7 days. `GET /api/points` shows the balance and price.
 
 `POST /api/posts/{id}/award` moves 5 points from the caller to the post's author, adds an award to the
