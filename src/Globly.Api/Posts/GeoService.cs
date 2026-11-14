@@ -81,7 +81,7 @@ public class GeoService(AppDbContext db)
 
         return rows.Select(r => r.Count == 1
                 ? new MapPointDto(r.Latitude, r.Longitude, 1, r.PostId, (MediaType)r.MediaType, r.Title, r.LocationRadiusMeters, r.Score)
-                : new MapPointDto(r.Latitude, r.Longitude, r.Count, null, (MediaType)r.MediaType, null, null, r.Score,
+                : new MapPointDto(r.Latitude, r.Longitude, r.Count, null, null, null, null, r.Score,
                     new MapBoundsDto(r.MinLat, r.MinLng, r.MaxLat, r.MaxLng)))
             .ToList();
     }

@@ -107,7 +107,7 @@ public record MapQuery(
 
 /// <summary>
 /// A map point. When Count == 1 it is a single post (PostId/MediaType/Title set);
-/// otherwise it is a cluster placed on its best post, whose MediaType it carries.
+/// otherwise it is a cluster placed on its best post.
 /// Score is the feed-style rank of the (best) post, for drawing better posts on top.
 /// </summary>
 public record MapPointDto(
