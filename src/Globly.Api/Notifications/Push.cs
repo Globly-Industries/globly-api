@@ -90,7 +90,8 @@ public sealed class PushSender(
             {
                 x.Id, x.RecipientId, x.ActorId, x.Type, x.PostId, x.CreatedAt,
                 Actor = x.Actor!.UserName!,
-                Body = x.Comment != null ? x.Comment.Body : null,
+                // Awards show the post's title.
+                Body = x.Comment != null ? x.Comment.Body : x.Post != null ? x.Post.Title : null,
             })
             .FirstOrDefaultAsync(ct);
         if (n is null) return; // Comment deleted meanwhile.
@@ -143,6 +144,8 @@ public sealed class PushSender(
 
     public static string Title(NotificationType type, string actor, string language) => (type, language) switch
     {
+        (NotificationType.Award, "lv") => $"{actor} apbalvoja tavu ierakstu",
+        (NotificationType.Award, _) => $"{actor} gave your post an award",
         (NotificationType.Follow, "lv") => $"{actor} sāka tev sekot",
         (NotificationType.Follow, _) => $"{actor} started following you",
         (NotificationType.Mention, "lv") => $"{actor} tevi pieminēja",

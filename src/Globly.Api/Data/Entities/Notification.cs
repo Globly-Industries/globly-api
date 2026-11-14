@@ -8,6 +8,8 @@ public enum NotificationType
     Mention = 1,
     /// <summary>Someone started following the recipient. Has no post or comment.</summary>
     Follow = 2,
+    /// <summary>Someone gave the recipient's post an award. Has no comment.</summary>
+    Award = 3,
 }
 
 /// <summary>An in-app notification about a comment or a new follower (Notifications table).</summary>

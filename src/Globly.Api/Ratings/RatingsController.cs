@@ -5,6 +5,7 @@ using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Moderation;
 using Globly.Api.Notifications;
+using Globly.Api.Points;
 using Globly.Api.Posts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,7 +28,7 @@ public record ReportResult(bool IsHidden);
 /// </summary>
 [ApiController]
 [Route("api")]
-public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community, NotificationService notifications, PushQueue push) : ControllerBase
+public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community, NotificationService notifications, PushQueue push, PointsService points) : ControllerBase
 {
     /// <summary>Set your vote: 1 = up, -1 = down, 0 = remove.</summary>
     [Authorize]
@@ -35,7 +36,7 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
     public async Task<ActionResult<VoteResult>> Vote(Guid postId, VoteRequest req, CancellationToken ct)
     {
         var userId = User.RequireUserId();
-        if (await FindVisibleAsync(postId, ct) is null) return NotFound();
+        if (await FindVisibleAsync(postId, ct) is not { } target) return NotFound();
 
         var vote = await db.PostVotes.FindAsync([postId, userId], ct);
         if (req.Value == 0)
@@ -51,6 +52,7 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
             vote.Value = (short)req.Value;
         }
         await db.SaveChangesAsync(ct);
+        if (req.Value == 1) await points.CreditLikeAsync(target, userId, ct);
         await community.ReevaluateAsync(postId, ct);
 
         var post = await db.Posts.AsNoTracking().Where(p => p.Id == postId)

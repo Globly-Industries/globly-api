@@ -18,13 +18,15 @@ public record RankCandidate(
     int Downvotes,
     int Views,
     DateTime CreatedAt,
-    double? DistanceKm = null);
+    double? DistanceKm = null,
+    bool Spotlit = false,
+    int Awards = 0);
 
 /// <summary>
 /// How much each signal counts. Likes, Views and Tab add up to 1; FollowBonus is added on top
-/// for posts by people the user follows.
+/// for posts by people the user follows, SpotlightBonus for spotlit posts.
 /// </summary>
-public record RankWeights(double Likes, double Views, double Tab, double FollowBonus);
+public record RankWeights(double Likes, double Views, double Tab, double FollowBonus, double SpotlightBonus);
 
 /// <summary>
 /// Scores feed posts. Every signal is turned into 0-1 (likes -1-1) and weighted:
@@ -36,10 +38,11 @@ public static class FeedRanking
 {
     // Views weigh less than likes: a like is a deliberate choice, a view mostly means the post was shown.
     // The tab's own signal gets half, otherwise an old hit would top "Recent" forever.
-    public static readonly RankWeights Recent = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15);
-    public static readonly RankWeights Nearby = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15);
+    // A spotlight gets a post seen, not liked: about a day of freshness, so a weak post still sinks.
+    public static readonly RankWeights Recent = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15, SpotlightBonus: 0.15);
+    public static readonly RankWeights Nearby = new(Likes: 0.35, Views: 0.15, Tab: 0.50, FollowBonus: 0.15, SpotlightBonus: 0.15);
     // Everything here is followed already; people expect this one to be close to chronological.
-    public static readonly RankWeights Following = new(Likes: 0.25, Views: 0.10, Tab: 0.65, FollowBonus: 0);
+    public static readonly RankWeights Following = new(Likes: 0.25, Views: 0.10, Tab: 0.65, FollowBonus: 0, SpotlightBonus: 0);
 
     public static RankWeights WeightsFor(FeedTab tab) => tab switch
     {
@@ -65,20 +68,25 @@ public static class FeedRanking
         if (candidates.Count == 0) return [];
 
         var w = WeightsFor(tab);
-        var maxLikes = Math.Max(LikesFloor, candidates.Max(c => c.Upvotes - c.Downvotes));
+        var maxLikes = Math.Max(LikesFloor, candidates.Max(Likes));
         var maxViews = Math.Max(ViewsFloor, candidates.Max(c => c.Views));
 
         return candidates
             .Select(c => (c.Id, c.CreatedAt, Score:
-                w.Likes * LikesSignal(c.Upvotes - c.Downvotes, maxLikes)
+                w.Likes * LikesSignal(Likes(c), maxLikes)
                 + w.Views * LogScaled(c.Views, maxViews)
                 + w.Tab * (tab == FeedTab.Nearby ? Closeness(c.DistanceKm ?? radiusKm, radiusKm) : Recency(c.CreatedAt, now))
-                + (followed.Contains(c.AuthorId) ? w.FollowBonus : 0)))
+                + (followed.Contains(c.AuthorId) ? w.FollowBonus : 0)
+                + (c.Spotlit ? w.SpotlightBonus : 0)))
             .OrderByDescending(r => r.Score)
             .ThenByDescending(r => r.CreatedAt)
             .Select(r => r.Id)
             .ToList();
     }
+
+    /// <summary>Net votes, with each award counting as the likes it cost the giver.</summary>
+    public static int Likes(RankCandidate c) =>
+        c.Upvotes - c.Downvotes + c.Awards * Points.PointsService.AwardLikeValue;
 
     /// <summary>-1..1: downvoted posts sink.</summary>
     public static double LikesSignal(int net, int max) => Math.Sign(net) * LogScaled(Math.Abs(net), max);

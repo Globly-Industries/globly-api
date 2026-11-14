@@ -24,6 +24,13 @@ public static class ErrorCodes
     public const string CaptureUnverified = "capture_unverified";
     public const string LocationRequired = "location_required";
     public const string CannotFollowSelf = "cannot_follow_self";
+    public const string PostHidden = "post_hidden";
+    public const string SpotlightActive = "spotlight_active";
+    public const string NotEnoughPoints = "not_enough_points";
+    public const string CannotAwardOwn = "cannot_award_own";
+    public const string AccountTooNew = "account_too_new";
+    public const string AlreadyAwarded = "already_awarded";
+    public const string AwardLimit = "award_limit";
 }
 
 public static class ProblemExtensions

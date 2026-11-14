@@ -135,6 +135,19 @@ Cloudflare's always-pass test keys (`appsettings.Development.json`).
 Likes and views are log-scaled against the most liked/viewed candidate, so the weights keep their
 meaning as the app grows. Follow and unfollow with `PUT`/`DELETE /api/users/{id}/follow`.
 
+## Points and Spotlight
+Authors earn 1 point the first time each other user likes one of their visible posts
+(`PointsLedger`, unique per voter and post), so unliking and liking again earns nothing, and
+downvotes never take points away. `AspNetUsers.Points` is the spendable balance.
+
+`POST /api/posts/{id}/spotlight` spends points to boost one of your own visible posts for 24 h:
++15% in the Recent and Nearby rankings and a "Spotlight" label. One spotlight at a time; it costs
+20 points plus 10 for each spotlight in the last 7 days. `GET /api/points` shows the balance and price.
+
+`POST /api/posts/{id}/award` moves 5 points from the caller to the post's author, adds an award to the
+post (each counts as 5 likes in the ranking) and notifies the author. Not on your own or hidden posts,
+once per post, 3 a day, and only from accounts at least 3 days old.
+
 ## Community moderation
 Posts are hidden automatically (gone from map, feed and nearby; the author and admins still see them,
 with the reason) when either rule is met:

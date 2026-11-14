@@ -33,7 +33,12 @@ public record PostDto(
     /// <summary>Admins only (null for everyone else): the NSFW filter's score, 0-1.</summary>
     float? NsfwScore = null,
     /// <summary>Admins only: the NSFW filter queued this visible post for review.</summary>
-    bool NeedsReview = false);
+    bool NeedsReview = false,
+    /// <summary>Set while the author has the post in the spotlight (boosted in feeds, labelled).</summary>
+    DateTime? SpotlightUntil = null,
+    int AwardCount = 0,
+    /// <summary>Whether the caller gave this post an award.</summary>
+    bool MyAward = false);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int Page, int PageSize, bool HasMore);
 

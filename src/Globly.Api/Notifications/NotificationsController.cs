@@ -29,17 +29,18 @@ public record UnreadCountDto(int Count);
 public class NotificationsController(AppDbContext db) : ControllerBase
 {
     /// <summary>
-    /// The caller's notifications, newest first. Follow notifications only with follows=true:
-    /// older apps can't show them.
+    /// The caller's notifications, newest first. Follow and award notifications only when asked for
+    /// (follows/awards=true): older apps can't show them.
     /// </summary>
     [HttpGet]
     public async Task<ActionResult<PagedResult<NotificationDto>>> Get(
         bool follows = false,
+        bool awards = false,
         [Range(1, int.MaxValue)] int page = 1,
         [Range(1, 100)] int pageSize = 30,
         CancellationToken ct = default)
     {
-        var items = await Mine(follows)
+        var items = await Mine(follows, awards)
             .OrderByDescending(n => n.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize + 1)
             .Select(n => new NotificationDto(
@@ -55,8 +56,8 @@ public class NotificationsController(AppDbContext db) : ControllerBase
     }
 
     [HttpGet("unread-count")]
-    public async Task<UnreadCountDto> UnreadCount(bool follows = false, CancellationToken ct = default) =>
-        new(await Mine(follows).CountAsync(n => n.ReadAt == null, ct));
+    public async Task<UnreadCountDto> UnreadCount(bool follows = false, bool awards = false, CancellationToken ct = default) =>
+        new(await Mine(follows, awards).CountAsync(n => n.ReadAt == null, ct));
 
     [HttpPost("{id:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid id, CancellationToken ct)
@@ -76,14 +77,15 @@ public class NotificationsController(AppDbContext db) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>The caller's notifications on posts they can still see, and follows if asked for.</summary>
-    private IQueryable<Notification> Mine(bool follows)
+    /// <summary>The caller's notifications on posts they can still see, and follows/awards if asked for.</summary>
+    private IQueryable<Notification> Mine(bool follows, bool awards)
     {
         var userId = User.RequireUserId();
         var isAdmin = User.IsInRole(Roles.Admin);
         return db.Notifications.Where(n => n.RecipientId == userId
             && (n.Type == NotificationType.Follow
                 ? follows
-                : !n.Post!.IsHidden || isAdmin || n.Post.UserId == userId));
+                : (n.Type != NotificationType.Award || awards)
+                  && (!n.Post!.IsHidden || isAdmin || n.Post.UserId == userId)));
     }
 }

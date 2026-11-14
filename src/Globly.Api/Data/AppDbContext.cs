@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
     public DbSet<Follow> Follows => Set<Follow>();
+    public DbSet<PointsEntry> PointsLedger => Set<PointsEntry>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -30,6 +31,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasIndex(p => p.Location).HasMethod("gist");
             e.HasIndex(p => p.CreatedAt);
             e.HasIndex(p => p.IsHidden);
+            e.HasIndex(p => new { p.UserId, p.SpotlightUntil });
 
             e.HasOne(p => p.User).WithMany(u => u.Posts)
                 .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -98,6 +100,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(d => d.Language).HasMaxLength(8);
             e.HasIndex(d => d.UserId);
             e.HasOne<AppUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<PointsEntry>(e =>
+        {
+            e.ToTable("PointsLedger");
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            // What makes a like pay out only once, however often it is taken back and given again.
+            e.HasIndex(x => new { x.PostId, x.SourceUserId }).IsUnique()
+                .HasFilter("\"Kind\" = 0").HasDatabaseName("IX_PointsLedger_LikeOnce");
+            // Award counts per post (Kind 3 = AwardReceived).
+            e.HasIndex(x => x.PostId).HasFilter("\"Kind\" = 3").HasDatabaseName("IX_PointsLedger_Awards");
+            e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Post>().WithMany().HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<AppUser>().WithMany().HasForeignKey(x => x.SourceUserId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<Follow>(e =>

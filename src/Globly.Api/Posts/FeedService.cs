@@ -1,4 +1,5 @@
 using Globly.Api.Data;
+using Globly.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Globly.Api.Posts;
@@ -32,19 +33,26 @@ public class FeedService(AppDbContext db, PostService posts, GeoService geo)
                 break;
         }
 
+        var now = DateTime.UtcNow;
         var rows = await q.Take(MaxCandidates)
-            .Select(p => new { p.Id, p.UserId, p.Upvotes, p.Downvotes, p.Views, p.CreatedAt, p.Location })
+            .Select(p => new
+            {
+                p.Id, p.UserId, p.Upvotes, p.Downvotes, p.Views, p.CreatedAt, p.Location, p.SpotlightUntil,
+                Awards = db.PointsLedger.Count(x => x.Kind == PointsKind.AwardReceived && x.PostId == p.Id),
+            })
             .ToListAsync(ct);
 
         var candidates = rows.Select(r => new RankCandidate(
             r.Id, r.UserId, r.Upvotes, r.Downvotes, r.Views, r.CreatedAt,
-            near is null ? null : FeedRanking.HaversineKm(near.Lat, near.Lng, r.Location.Y, r.Location.X))).ToList();
+            near is null ? null : FeedRanking.HaversineKm(near.Lat, near.Lng, r.Location.Y, r.Location.X),
+            r.SpotlightUntil > now,
+            r.Awards)).ToList();
 
         IReadOnlySet<string> followed = userId is null || tab == FeedTab.Following
             ? new HashSet<string>()
             : (await db.Follows.Where(x => x.FollowerId == userId).Select(x => x.FolloweeId).ToListAsync(ct)).ToHashSet();
 
-        var ranked = FeedRanking.Rank(candidates, tab, DateTime.UtcNow, followed, near?.RadiusKm ?? 50);
+        var ranked = FeedRanking.Rank(candidates, tab, now, followed, near?.RadiusKm ?? 50);
         var ids = ranked.Skip((page - 1) * pageSize).Take(pageSize).ToList();
         var hasMore = ranked.Count > page * pageSize;
 

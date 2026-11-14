@@ -9,8 +9,8 @@ public class FeedRankingTests
     private static readonly HashSet<string> NoOne = [];
 
     private static RankCandidate Post(string id, int up = 0, int down = 0, int views = 0, double hoursOld = 0,
-        double? km = null, string author = "a") =>
-        new(Guid.Parse($"00000000-0000-0000-0000-{id.PadLeft(12, '0')}"), author, up, down, views, Now.AddHours(-hoursOld), km);
+        double? km = null, string author = "a", bool spotlit = false, int awards = 0) =>
+        new(Guid.Parse($"00000000-0000-0000-0000-{id.PadLeft(12, '0')}"), author, up, down, views, Now.AddHours(-hoursOld), km, spotlit, awards);
 
     private static string Short(Guid id) => id.ToString()[^12..].TrimStart('0');
 
@@ -98,5 +98,33 @@ public class FeedRankingTests
     {
         // Riga to Tallinn is about 280 km.
         Assert.InRange(FeedRanking.HaversineKm(56.9496, 24.1052, 59.4370, 24.7536), 275, 285);
+    }
+
+    [Fact]
+    public void Spotlight_lifts_a_post_above_an_equal_one()
+    {
+        Assert.Equal(["1", "2"], Rank(FeedTab.Recent, null, Post("1", hoursOld: 3, spotlit: true), Post("2", hoursOld: 1)));
+    }
+
+    [Fact]
+    public void Spotlight_does_not_beat_a_clearly_better_post()
+    {
+        Assert.Equal(["2", "1"], Rank(FeedTab.Recent, null,
+            Post("1", hoursOld: 1, spotlit: true),
+            Post("2", up: 40, views: 400, hoursOld: 1)));
+    }
+
+    [Fact]
+    public void Spotlight_cost_rises_with_recent_use()
+    {
+        Assert.Equal(20, Globly.Api.Points.PointsService.SpotlightCost(0));
+        Assert.Equal(40, Globly.Api.Points.PointsService.SpotlightCost(2));
+    }
+
+    [Fact]
+    public void An_award_counts_as_several_likes()
+    {
+        Assert.Equal(["2", "1"], Rank(FeedTab.Recent, null, Post("1", up: 4, hoursOld: 1), Post("2", hoursOld: 1, awards: 1)));
+        Assert.Equal(5, FeedRanking.Likes(Post("3", awards: 1)));
     }
 }

@@ -69,6 +69,9 @@ namespace Globly.Api.Data.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("Points")
+                        .HasColumnType("integer");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -257,6 +260,49 @@ namespace Globly.Api.Data.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("Globly.Api.Data.Entities.PointsEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Amount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("PostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SourceUserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PostId")
+                        .HasDatabaseName("IX_PointsLedger_Awards")
+                        .HasFilter("\"Kind\" = 3");
+
+                    b.HasIndex("SourceUserId");
+
+                    b.HasIndex("PostId", "SourceUserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_PointsLedger_LikeOnce")
+                        .HasFilter("\"Kind\" = 0");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("PointsLedger", (string)null);
+                });
+
             modelBuilder.Entity("Globly.Api.Data.Entities.Post", b =>
                 {
                     b.Property<Guid>("Id")
@@ -313,6 +359,9 @@ namespace Globly.Api.Data.Migrations
                     b.Property<int>("ReportCount")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("SpotlightUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -343,7 +392,7 @@ namespace Globly.Api.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Location"), "gist");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "SpotlightUntil");
 
                     b.ToTable("Posts");
                 });
@@ -620,6 +669,25 @@ namespace Globly.Api.Data.Migrations
                     b.Navigation("Comment");
 
                     b.Navigation("Post");
+                });
+
+            modelBuilder.Entity("Globly.Api.Data.Entities.PointsEntry", b =>
+                {
+                    b.HasOne("Globly.Api.Data.Entities.Post", null)
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("SourceUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Globly.Api.Data.Entities.Post", b =>

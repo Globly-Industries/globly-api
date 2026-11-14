@@ -11,6 +11,8 @@ public class PushTitleTests
     [InlineData(NotificationType.Follow, "lv", "anna sāka tev sekot")]
     [InlineData(NotificationType.Comment, "en", "anna commented on your post")]
     [InlineData(NotificationType.Mention, "lv", "anna tevi pieminēja")]
+    [InlineData(NotificationType.Award, "en", "anna gave your post an award")]
+    [InlineData(NotificationType.Award, "lv", "anna apbalvoja tavu ierakstu")]
     public void Titles_are_translated(NotificationType type, string language, string expected) =>
         Assert.Equal(expected, PushSender.Title(type, "anna", language));
 }
