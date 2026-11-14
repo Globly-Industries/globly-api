@@ -10,5 +10,8 @@ public class AppUser : IdentityUser
     /// <summary>Spendable points: the sum of the user's PointsLedger entries, never below 0.</summary>
     public int Points { get; set; }
 
+    /// <summary>Storage key of the profile picture (a square JPEG); null shows initials.</summary>
+    public string? AvatarKey { get; set; }
+
     public List<Post> Posts { get; set; } = [];
 }

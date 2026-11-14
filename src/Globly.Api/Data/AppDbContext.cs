@@ -23,6 +23,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
 
         b.HasPostgresExtension("postgis");
 
+        b.Entity<AppUser>(e => e.Property(u => u.AvatarKey).HasMaxLength(300));
+
         b.Entity<Post>(e =>
         {
             e.Property(p => p.Title).HasMaxLength(120);

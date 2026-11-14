@@ -18,7 +18,7 @@ public record ReportDto(string UserId, string? UserName, string? Reason, DateTim
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = Roles.Admin)]
-public class AdminController(AppDbContext db, PostService posts, UserManager<AppUser> users) : ControllerBase
+public class AdminController(AppDbContext db, PostService posts, UserManager<AppUser> users, Users.AvatarService avatars) : ControllerBase
 {
     /// <summary>
     /// Moderation queue. By default hidden posts (by community moderation, the NSFW filter or an admin)
@@ -135,6 +135,7 @@ public class AdminController(AppDbContext db, PostService posts, UserManager<App
         if (user is null) return NotFound();
 
         await posts.DeleteUserMediaAsync(id, ct);
+        await avatars.DeleteForUserAsync(id, ct);
         var result = await users.DeleteAsync(user);
         if (!result.Succeeded)
             return Problem(string.Join(" ", result.Errors.Select(e => e.Description)));

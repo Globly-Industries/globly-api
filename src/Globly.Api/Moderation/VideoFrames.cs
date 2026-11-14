@@ -26,6 +26,15 @@ public static class VideoFrames
         return frames.Length > 0 ? frames : throw new InvalidOperationException("The video has no frames.");
     }
 
+    /// <summary>The video's first frame at full size, as a PNG in <paramref name="outputDir"/>.</summary>
+    public static async Task<string> FirstFrameAsync(
+        string ffmpegPath, TimeSpan timeout, string inputFormat, string file, string outputDir, CancellationToken ct)
+    {
+        await RunAsync(ffmpegPath, timeout, inputFormat, file, outputDir, ["-frames:v", "1"], ct);
+        return Directory.GetFiles(outputDir, "frame-*.png").Order().FirstOrDefault()
+            ?? throw new InvalidOperationException("The video has no frames.");
+    }
+
     private static async Task RunAsync(
         string ffmpegPath, TimeSpan timeout, string inputFormat, string file, string outputDir, string[] filter,
         CancellationToken ct)

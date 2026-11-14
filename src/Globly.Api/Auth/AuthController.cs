@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using Globly.Api.Common;
 using Globly.Api.Data.Entities;
 using Microsoft.AspNetCore.Authorization;
+using Globly.Api.Users;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -17,7 +18,7 @@ public record AuthRequest(
 /// <summary>Public settings the app needs before signing in.</summary>
 public record AuthConfigDto(string? CaptchaSiteKey);
 
-public record UserDto(string Id, string UserName, bool IsAdmin, DateTime CreatedAt);
+public record UserDto(string Id, string UserName, bool IsAdmin, DateTime CreatedAt, string? AvatarUrl = null);
 
 public record AuthResponse(string Token, DateTime ExpiresAt, UserDto User);
 
@@ -26,7 +27,7 @@ public record AuthResponse(string Token, DateTime ExpiresAt, UserDto User);
 [Route("api/auth")]
 [EnableRateLimiting("auth")]
 public class AuthController(UserManager<AppUser> users, TokenService tokens, TurnstileVerifier turnstile,
-    Microsoft.Extensions.Options.IOptions<TurnstileOptions> turnstileOptions) : ControllerBase
+    Microsoft.Extensions.Options.IOptions<TurnstileOptions> turnstileOptions, Storage.IMediaStorage storage) : ControllerBase
 {
     /// <summary>Tells the app whether to show the human check (and with which Turnstile site key).</summary>
     [HttpGet("config")]
@@ -84,11 +85,11 @@ public class AuthController(UserManager<AppUser> users, TokenService tokens, Tur
     {
         var roles = await users.GetRolesAsync(user);
         var (token, expires) = tokens.Create(user, roles);
-        return new AuthResponse(token, expires, new UserDto(user.Id, user.UserName!, roles.Contains(Roles.Admin), user.CreatedAt));
+        return new AuthResponse(token, expires, new UserDto(user.Id, user.UserName!, roles.Contains(Roles.Admin), user.CreatedAt, storage.AvatarUrl(user.AvatarKey)));
     }
 
     private async Task<UserDto> ToDto(AppUser user) =>
-        new(user.Id, user.UserName!, await users.IsInRoleAsync(user, Roles.Admin), user.CreatedAt);
+        new(user.Id, user.UserName!, await users.IsInRoleAsync(user, Roles.Admin), user.CreatedAt, storage.AvatarUrl(user.AvatarKey));
 
     private static Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary ToModelState(IdentityResult result)
     {

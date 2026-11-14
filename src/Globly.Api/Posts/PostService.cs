@@ -1,6 +1,7 @@
 using Globly.Api.Data;
 using Globly.Api.Data.Entities;
 using Globly.Api.Storage;
+using Globly.Api.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace Globly.Api.Posts;
@@ -40,6 +41,7 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             p.Id,
             p.UserId,
             UserName = p.User!.UserName,
+            AvatarKey = p.User.AvatarKey,
             p.Title,
             p.Description,
             p.MediaType,
@@ -71,7 +73,7 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
         var now = DateTime.UtcNow;
         return rows.Select(r => new PostDto(
             r.Id,
-            new AuthorDto(r.UserId, r.UserName ?? "[deleted]"),
+            new AuthorDto(r.UserId, r.UserName ?? "[deleted]", storage.AvatarUrl(r.AvatarKey)),
             r.Title,
             r.Description,
             r.MediaType,

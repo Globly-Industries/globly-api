@@ -3,7 +3,7 @@ using Globly.Api.Data.Entities;
 
 namespace Globly.Api.Posts;
 
-public record AuthorDto(string Id, string UserName);
+public record AuthorDto(string Id, string UserName, string? AvatarUrl = null);
 
 public record MediaDto(string Url, string ContentType, long ContentLength);
 

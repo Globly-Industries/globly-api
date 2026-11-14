@@ -7,6 +7,8 @@ using Globly.Api.Moderation;
 using Globly.Api.Notifications;
 using Globly.Api.Points;
 using Globly.Api.Posts;
+using Globly.Api.Storage;
+using Globly.Api.Users;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +30,7 @@ public record ReportResult(bool IsHidden);
 /// </summary>
 [ApiController]
 [Route("api")]
-public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community, NotificationService notifications, PushQueue push, PointsService points) : ControllerBase
+public class RatingsController(AppDbContext db, IContentModerator moderator, CommunityModeration community, NotificationService notifications, PushQueue push, PointsService points, IMediaStorage storage) : ControllerBase
 {
     /// <summary>Set your vote: 1 = up, -1 = down, 0 = remove.</summary>
     [Authorize]
@@ -70,11 +72,13 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
     {
         if (await FindVisibleAsync(postId, ct) is null) return NotFound();
 
-        var items = await db.Comments.Where(c => c.PostId == postId)
+        var rows = await db.Comments.Where(c => c.PostId == postId)
             .OrderByDescending(c => c.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize + 1)
-            .Select(c => new CommentDto(c.Id, c.PostId, new AuthorDto(c.UserId, c.User!.UserName!), c.Body, c.CreatedAt))
+            .Select(c => new { c.Id, c.PostId, c.UserId, UserName = c.User!.UserName!, c.User.AvatarKey, c.Body, c.CreatedAt })
             .ToListAsync(ct);
+        var items = rows.Select(c => new CommentDto(
+            c.Id, c.PostId, new AuthorDto(c.UserId, c.UserName, storage.AvatarUrl(c.AvatarKey)), c.Body, c.CreatedAt)).ToList();
 
         var hasMore = items.Count > pageSize;
         if (hasMore) items.RemoveAt(items.Count - 1);
@@ -102,7 +106,9 @@ public class RatingsController(AppDbContext db, IContentModerator moderator, Com
         await db.SaveChangesAsync(ct);
         push.Enqueue(created);
 
-        return new CommentDto(comment.Id, postId, new AuthorDto(userId, User.Identity?.Name ?? ""), body, comment.CreatedAt);
+        var avatar = await db.Users.Where(u => u.Id == userId).Select(u => u.AvatarKey).SingleOrDefaultAsync(ct);
+        return new CommentDto(comment.Id, postId, new AuthorDto(userId, User.Identity?.Name ?? "", storage.AvatarUrl(avatar)),
+            body, comment.CreatedAt);
     }
 
     /// <summary>Legacy: emoji reactions were removed. Always empty, so older app versions still load posts.</summary>

@@ -148,6 +148,13 @@ downvotes never take points away. `AspNetUsers.Points` is the spendable balance.
 post (each counts as 5 likes in the ranking) and notifies the author. Not on your own or hidden posts,
 once per post, 3 a day, and only from accounts at least 3 days old.
 
+## Profile pictures
+`PUT /api/users/me/avatar` (a photo taken in the app) or `PUT /api/users/me/avatar/from-post/{postId}`
+(one of your own photo posts, or a video post's first frame). Either way the picture is turned upright,
+centre-cropped to a 512 px square JPEG without metadata, checked by the NSFW filter (rejected from the
+review threshold up) and stored under `avatars/`. Hidden or flagged posts can't be used. Every author in
+the API carries an `avatarUrl` (null shows initials).
+
 ## Community moderation
 Posts are hidden automatically (gone from map, feed and nearby; the author and admins still see them,
 with the reason) when either rule is met:
