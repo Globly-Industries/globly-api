@@ -10,7 +10,7 @@ namespace Globly.Api.Users;
 
 public enum AvatarProblem { None, NotFound, NotOwner, NoPicture, Hidden, Rejected, Unreadable }
 
-/// <summary>Profile pictures: a square JPEG made from a fresh photo or one of the user's own posts.</summary>
+/// <summary>Profile pictures: a square JPEG made from one of the user's own posts (already proven captured).</summary>
 public class AvatarService(
     AppDbContext db,
     IMediaStorage storage,
@@ -20,22 +20,6 @@ public class AvatarService(
     ILogger<AvatarService> logger)
 {
     public const int Size = 512;
-    public const long MaxUploadBytes = 15 * 1024 * 1024;
-
-    /// <summary>Uses an uploaded photo (taken in the app's camera).</summary>
-    public async Task<(AvatarProblem, string? Url)> SetFromUploadAsync(string userId, Stream upload, CancellationToken ct)
-    {
-        MagickImage image;
-        try
-        {
-            image = new MagickImage(upload);
-        }
-        catch (MagickException)
-        {
-            return (AvatarProblem.Unreadable, null);
-        }
-        using (image) return await StoreAsync(userId, image, ct);
-    }
 
     /// <summary>Uses the picture of one of the user's own photo posts, or the first frame of a video post.</summary>
     public async Task<(AvatarProblem, string? Url)> SetFromPostAsync(string userId, Guid postId, CancellationToken ct)

@@ -33,11 +33,6 @@ public record FollowUserDto(
 
 public record AvatarResult(string? AvatarUrl);
 
-public class AvatarForm
-{
-    public IFormFile? File { get; set; }
-}
-
 /// <summary>Public user profiles and following.</summary>
 [ApiController]
 [Route("api/users")]
@@ -159,22 +154,6 @@ public class UsersController(
         var hasMore = items.Count > pageSize;
         if (hasMore) items.RemoveAt(items.Count - 1);
         return new PagedResult<FollowUserDto>(items, page, pageSize, hasMore);
-    }
-
-    /// <summary>Sets the profile picture from a photo just taken in the app.</summary>
-    [Authorize]
-    [HttpPut("me/avatar")]
-    [Consumes("multipart/form-data")]
-    [RequestSizeLimit(AvatarService.MaxUploadBytes)]
-    public async Task<ActionResult<AvatarResult>> SetAvatar([FromForm] AvatarForm form, CancellationToken ct)
-    {
-        if (form.File is not { Length: > 0 } file)
-            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.FileRequired, "Send a photo.");
-        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
-            return this.ProblemWithCode(StatusCodes.Status422UnprocessableEntity, ErrorCodes.InvalidFile, "Only photos can be profile pictures.");
-
-        await using var stream = file.OpenReadStream();
-        return AvatarOutcome(await avatars.SetFromUploadAsync(User.RequireUserId(), stream, ct));
     }
 
     /// <summary>Sets the profile picture from one of your own photo or video posts.</summary>
