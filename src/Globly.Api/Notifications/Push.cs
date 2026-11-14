@@ -86,7 +86,12 @@ public sealed class PushSender(
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var n = await db.Notifications.AsNoTracking().Where(x => x.Id == id)
-            .Select(x => new { x.Id, x.RecipientId, x.Type, x.PostId, x.CreatedAt, Actor = x.Actor!.UserName!, Body = x.Comment!.Body })
+            .Select(x => new
+            {
+                x.Id, x.RecipientId, x.ActorId, x.Type, x.PostId, x.CreatedAt,
+                Actor = x.Actor!.UserName!,
+                Body = x.Comment != null ? x.Comment.Body : null,
+            })
             .FirstOrDefaultAsync(ct);
         if (n is null) return; // Comment deleted meanwhile.
 
@@ -97,22 +102,22 @@ public sealed class PushSender(
             return;
         }
 
-        var body = n.Body.Length > MaxBodyLength ? n.Body[..MaxBodyLength] + "…" : n.Body;
+        var body = n.Body is { Length: > MaxBodyLength } ? n.Body[..MaxBodyLength] + "…" : n.Body;
+        // Follows open the follower's profile; older apps ignore pushes without a postId.
+        var data = new Dictionary<string, string> { ["notificationId"] = n.Id.ToString() };
+        if (n.PostId is { } postId) data["postId"] = postId.ToString();
+        else data["userId"] = n.ActorId;
         var messages = devices.Select(d => new Message
         {
             Fid = d.Fid,
             Notification = new FirebaseAdmin.Messaging.Notification { Title = Title(n.Type, n.Actor, d.Language), Body = body },
-            Data = new Dictionary<string, string>
-            {
-                ["notificationId"] = n.Id.ToString(),
-                ["postId"] = n.PostId.ToString(),
-            },
+            Data = data,
             Android = new AndroidConfig
             {
                 Notification = new AndroidNotification
                 {
                     // Same tag per post: new comments replace the old push instead of piling up.
-                    Tag = n.PostId.ToString(),
+                    Tag = n.PostId?.ToString() ?? $"follow-{n.ActorId}",
                     // Must be set: the SDK otherwise sends DateTime.MinValue, shown as year 1.
                     EventTimestamp = DateTime.SpecifyKind(n.CreatedAt, DateTimeKind.Utc),
                 },
@@ -138,6 +143,8 @@ public sealed class PushSender(
 
     public static string Title(NotificationType type, string actor, string language) => (type, language) switch
     {
+        (NotificationType.Follow, "lv") => $"{actor} sāka tev sekot",
+        (NotificationType.Follow, _) => $"{actor} started following you",
         (NotificationType.Mention, "lv") => $"{actor} tevi pieminēja",
         (NotificationType.Mention, _) => $"{actor} mentioned you",
         (_, "lv") => $"{actor} komentēja tavu ierakstu",

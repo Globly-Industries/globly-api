@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Globly.Api.Notifications;
 
-/// <summary>Creates notifications for new comments: the post's author and any @mentioned users.</summary>
+/// <summary>Creates notifications for new comments (the post's author and any @mentioned users) and new followers.</summary>
 public partial class NotificationService(AppDbContext db, ILookupNormalizer normalizer)
 {
     /// <summary>Caps how many users one comment can notify by mentions.</summary>
@@ -24,6 +24,20 @@ public partial class NotificationService(AppDbContext db, ILookupNormalizer norm
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(MaxMentions)
             .ToList();
+
+    /// <summary>
+    /// Adds a notification that [followerId] follows [followeeId] and returns it; the caller saves.
+    /// Null if one was ever sent for this pair, so following and unfollowing can't spam pushes.
+    /// </summary>
+    public async Task<Notification?> AddForFollowAsync(string followerId, string followeeId, CancellationToken ct)
+    {
+        if (await db.Notifications.AnyAsync(n => n.Type == NotificationType.Follow
+                && n.ActorId == followerId && n.RecipientId == followeeId, ct))
+            return null;
+        var n = new Notification { RecipientId = followeeId, ActorId = followerId, Type = NotificationType.Follow };
+        db.Notifications.Add(n);
+        return n;
+    }
 
     /// <summary>Adds notifications for [comment] on [post] and returns them; the caller saves.</summary>
     public async Task<List<Notification>> AddForCommentAsync(Post post, Comment comment, CancellationToken ct)

@@ -122,6 +122,19 @@ Off until both keys are set, so it never blocks anything by accident.
 The app asks `GET /api/auth/config` for the site key, so no app rebuild is needed. Development uses
 Cloudflare's always-pass test keys (`appsettings.Development.json`).
 
+## Feed ranking
+`GET /api/posts/feed?tab=Recent|Nearby|Following` ranks posts with `Posts/FeedRanking.cs`
+(newest 1000 candidates per tab; nearby takes the closest 1000 within `radiusKm`):
+
+| Tab       | Likes (net votes) | Views | Tab signal                         | Followed author |
+|-----------|-------------------|-------|------------------------------------|-----------------|
+| Recent    | 35%               | 15%   | 50% recency (halves every 24 h)    | +15%            |
+| Nearby    | 35%               | 15%   | 50% closeness (halves at radius/10) | +15%           |
+| Following | 25%               | 10%   | 65% recency                        | (all followed)  |
+
+Likes and views are log-scaled against the most liked/viewed candidate, so the weights keep their
+meaning as the app grows. Follow and unfollow with `PUT`/`DELETE /api/users/{id}/follow`.
+
 ## Community moderation
 Posts are hidden automatically (gone from map, feed and nearby; the author and admins still see them,
 with the reason) when either rule is met:

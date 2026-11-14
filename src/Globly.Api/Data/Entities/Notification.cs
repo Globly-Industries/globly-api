@@ -6,9 +6,11 @@ public enum NotificationType
     Comment = 0,
     /// <summary>Someone @mentioned the recipient in a comment.</summary>
     Mention = 1,
+    /// <summary>Someone started following the recipient. Has no post or comment.</summary>
+    Follow = 2,
 }
 
-/// <summary>An in-app notification about a comment (Notifications table).</summary>
+/// <summary>An in-app notification about a comment or a new follower (Notifications table).</summary>
 public class Notification
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
@@ -19,10 +21,10 @@ public class Notification
 
     public NotificationType Type { get; set; }
 
-    public Guid PostId { get; set; }
+    public Guid? PostId { get; set; }
     public Post? Post { get; set; }
 
-    public Guid CommentId { get; set; }
+    public Guid? CommentId { get; set; }
     public Comment? Comment { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

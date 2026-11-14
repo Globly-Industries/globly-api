@@ -22,6 +22,8 @@ public static class ErrorCodes
     public const string CaptureInvalid = "capture_invalid";
     public const string CaptureExpired = "capture_expired";
     public const string CaptureUnverified = "capture_unverified";
+    public const string LocationRequired = "location_required";
+    public const string CannotFollowSelf = "cannot_follow_self";
 }
 
 public static class ProblemExtensions

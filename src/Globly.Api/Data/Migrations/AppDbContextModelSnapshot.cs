@@ -158,6 +158,24 @@ namespace Globly.Api.Data.Migrations
                     b.ToTable("Comments");
                 });
 
+            modelBuilder.Entity("Globly.Api.Data.Entities.Follow", b =>
+                {
+                    b.Property<string>("FollowerId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FolloweeId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("FollowerId", "FolloweeId");
+
+                    b.HasIndex("FolloweeId");
+
+                    b.ToTable("Follows");
+                });
+
             modelBuilder.Entity("Globly.Api.Data.Entities.MediaFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -203,13 +221,13 @@ namespace Globly.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<Guid>("CommentId")
+                    b.Property<Guid?>("CommentId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("PostId")
+                    b.Property<Guid?>("PostId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("ReadAt")
@@ -558,6 +576,21 @@ namespace Globly.Api.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Globly.Api.Data.Entities.Follow", b =>
+                {
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("FolloweeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Globly.Api.Data.Entities.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("FollowerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Globly.Api.Data.Entities.Notification", b =>
                 {
                     b.HasOne("Globly.Api.Data.Entities.AppUser", "Actor")
@@ -569,14 +602,12 @@ namespace Globly.Api.Data.Migrations
                     b.HasOne("Globly.Api.Data.Entities.Comment", "Comment")
                         .WithMany()
                         .HasForeignKey("CommentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Globly.Api.Data.Entities.Post", "Post")
                         .WithMany()
                         .HasForeignKey("PostId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("Globly.Api.Data.Entities.AppUser", null)
                         .WithMany()

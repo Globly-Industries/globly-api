@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
     public DbSet<CaptureTicket> CaptureTickets => Set<CaptureTicket>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<PushDevice> PushDevices => Set<PushDevice>();
+    public DbSet<Follow> Follows => Set<Follow>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -97,6 +98,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.Property(d => d.Language).HasMaxLength(8);
             e.HasIndex(d => d.UserId);
             e.HasOne<AppUser>().WithMany().HasForeignKey(d => d.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Follow>(e =>
+        {
+            e.HasKey(f => new { f.FollowerId, f.FolloweeId });
+            e.HasIndex(f => f.FolloweeId);
+            e.HasOne<AppUser>().WithMany().HasForeignKey(f => f.FollowerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<AppUser>().WithMany().HasForeignKey(f => f.FolloweeId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

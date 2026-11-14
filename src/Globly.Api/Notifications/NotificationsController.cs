@@ -9,14 +9,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Globly.Api.Notifications;
 
+/// <summary>Post and comment fields are null for Follow notifications.</summary>
 public record NotificationDto(
     Guid Id,
     NotificationType Type,
     AuthorDto Actor,
-    Guid PostId,
-    string PostTitle,
-    Guid CommentId,
-    string CommentBody,
+    Guid? PostId,
+    string? PostTitle,
+    Guid? CommentId,
+    string? CommentBody,
     DateTime CreatedAt,
     bool IsRead);
 
@@ -27,19 +28,25 @@ public record UnreadCountDto(int Count);
 [Authorize]
 public class NotificationsController(AppDbContext db) : ControllerBase
 {
-    /// <summary>The caller's notifications, newest first.</summary>
+    /// <summary>
+    /// The caller's notifications, newest first. Follow notifications only with follows=true:
+    /// older apps can't show them.
+    /// </summary>
     [HttpGet]
     public async Task<ActionResult<PagedResult<NotificationDto>>> Get(
+        bool follows = false,
         [Range(1, int.MaxValue)] int page = 1,
         [Range(1, 100)] int pageSize = 30,
         CancellationToken ct = default)
     {
-        var items = await Mine()
+        var items = await Mine(follows)
             .OrderByDescending(n => n.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize + 1)
             .Select(n => new NotificationDto(
                 n.Id, n.Type, new AuthorDto(n.ActorId, n.Actor!.UserName!),
-                n.PostId, n.Post!.Title, n.CommentId, n.Comment!.Body, n.CreatedAt, n.ReadAt != null))
+                n.PostId, n.Post != null ? n.Post.Title : null,
+                n.CommentId, n.Comment != null ? n.Comment.Body : null,
+                n.CreatedAt, n.ReadAt != null))
             .ToListAsync(ct);
 
         var hasMore = items.Count > pageSize;
@@ -48,8 +55,8 @@ public class NotificationsController(AppDbContext db) : ControllerBase
     }
 
     [HttpGet("unread-count")]
-    public async Task<UnreadCountDto> UnreadCount(CancellationToken ct) =>
-        new(await Mine().CountAsync(n => n.ReadAt == null, ct));
+    public async Task<UnreadCountDto> UnreadCount(bool follows = false, CancellationToken ct = default) =>
+        new(await Mine(follows).CountAsync(n => n.ReadAt == null, ct));
 
     [HttpPost("{id:guid}/read")]
     public async Task<IActionResult> MarkRead(Guid id, CancellationToken ct)
@@ -69,12 +76,14 @@ public class NotificationsController(AppDbContext db) : ControllerBase
         return NoContent();
     }
 
-    /// <summary>The caller's notifications on posts they can still see.</summary>
-    private IQueryable<Notification> Mine()
+    /// <summary>The caller's notifications on posts they can still see, and follows if asked for.</summary>
+    private IQueryable<Notification> Mine(bool follows)
     {
         var userId = User.RequireUserId();
         var isAdmin = User.IsInRole(Roles.Admin);
         return db.Notifications.Where(n => n.RecipientId == userId
-            && (!n.Post!.IsHidden || isAdmin || n.Post.UserId == userId));
+            && (n.Type == NotificationType.Follow
+                ? follows
+                : !n.Post!.IsHidden || isAdmin || n.Post.UserId == userId));
     }
 }

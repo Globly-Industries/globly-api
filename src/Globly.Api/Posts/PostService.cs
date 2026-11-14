@@ -88,6 +88,17 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             forAdmin && r.NeedsReview)).ToList();
     }
 
+    /// <summary>One page of an ordered query.</summary>
+    public async Task<PagedResult<PostDto>> PageAsync(
+        IQueryable<Post> q, int page, int pageSize, string? currentUserId, CancellationToken ct = default)
+    {
+        // Fetch one extra row to know whether another page exists.
+        var items = await ToDtosAsync(q.Skip((page - 1) * pageSize).Take(pageSize + 1), currentUserId, ct);
+        var hasMore = items.Count > pageSize;
+        if (hasMore) items.RemoveAt(items.Count - 1);
+        return new PagedResult<PostDto>(items, page, pageSize, hasMore);
+    }
+
     public async Task<PostDto?> GetDtoAsync(Guid id, string? currentUserId, CancellationToken ct = default) =>
         (await ToDtosAsync(db.Posts.Where(p => p.Id == id), currentUserId, ct)).FirstOrDefault();
 

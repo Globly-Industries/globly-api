@@ -19,6 +19,7 @@ namespace Globly.Api.Posts;
 public class PostsController(
     AppDbContext db,
     PostService posts,
+    FeedService feed,
     GeoService geo,
     IMediaStorage storage,
     IMediaSanitizer sanitizer,
@@ -38,7 +39,7 @@ public class PostsController(
     public async Task<ActionResult<List<MapPointDto>>> Map([FromQuery] MapQuery q, [FromQuery] PostFilter f, CancellationToken ct)
         => await geo.GetMapPointsAsync(q, f, ct);
 
-    /// <summary>Closest posts to a location, nearest first.</summary>
+    /// <summary>Posts near a location, ranked like the Nearby feed tab. Kept for older apps.</summary>
     [HttpGet("nearby")]
     public async Task<ActionResult<List<PostDto>>> Nearby(
         [Range(-90, 90)] double lat,
@@ -48,20 +49,31 @@ public class PostsController(
         [Range(1, MaxPageSize)] int limit = 20,
         CancellationToken ct = default)
     {
-        var q = PostService.ApplyFilter(geo.Nearby(lat, lng, radiusKm), f).Take(limit);
-        return await posts.ToDtosAsync(q, User.GetUserId(), ct);
+        var result = await feed.GetPageAsync(FeedTab.Nearby, f, new(lat, lng, radiusKm), User.GetUserId(), 1, limit, ct);
+        return result.Items.ToList();
     }
 
-    /// <summary>Chronological feed, newest first.</summary>
+    /// <summary>
+    /// Ranked feed (see <see cref="FeedRanking"/>). Nearby needs lat/lng; Following needs sign-in.
+    /// Rankings shift between pages as votes come in, so clients should skip ids they already have.
+    /// </summary>
     [HttpGet("feed")]
     public async Task<ActionResult<PagedResult<PostDto>>> Feed(
         [FromQuery] PostFilter f,
+        FeedTab tab = FeedTab.Recent,
+        [Range(-90, 90)] double? lat = null,
+        [Range(-180, 180)] double? lng = null,
+        [Range(0.1, 20000)] double radiusKm = 50,
         [Range(1, int.MaxValue)] int page = 1,
         [Range(1, MaxPageSize)] int pageSize = 20,
         CancellationToken ct = default)
     {
-        var q = PostService.ApplyFilter(posts.Visible, f).OrderByDescending(p => p.CreatedAt);
-        return await Page(q, page, pageSize, ct);
+        FeedService.NearbyQuery? near = lat is { } la && lng is { } lo ? new(la, lo, radiusKm) : null;
+        if (tab == FeedTab.Nearby && near is null)
+            return this.ProblemWithCode(StatusCodes.Status400BadRequest, ErrorCodes.LocationRequired, "Nearby needs lat and lng.");
+        if (tab == FeedTab.Following && User.GetUserId() is null) return Unauthorized();
+
+        return await feed.GetPageAsync(tab, f, near, User.GetUserId(), page, pageSize, ct);
     }
 
     /// <summary>Posts of the signed-in user.</summary>
@@ -302,14 +314,8 @@ public class PostsController(
 
     private bool CanModify(Post post) => post.UserId == User.GetUserId() || User.IsInRole(Roles.Admin);
 
-    private async Task<PagedResult<PostDto>> Page(IQueryable<Post> q, int page, int pageSize, CancellationToken ct)
-    {
-        // Fetch one extra row to know whether another page exists.
-        var items = await posts.ToDtosAsync(q.Skip((page - 1) * pageSize).Take(pageSize + 1), User.GetUserId(), ct);
-        var hasMore = items.Count > pageSize;
-        if (hasMore) items.RemoveAt(items.Count - 1);
-        return new PagedResult<PostDto>(items, page, pageSize, hasMore);
-    }
+    private Task<PagedResult<PostDto>> Page(IQueryable<Post> q, int page, int pageSize, CancellationToken ct) =>
+        posts.PageAsync(q, page, pageSize, User.GetUserId(), ct);
 
     private static string ResolveContentType(IFormFile file)
     {
