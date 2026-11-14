@@ -9,17 +9,9 @@ namespace Globly.Api.Points;
 
 public record PointsDto(
     int Balance,
-    /// <summary>What the next spotlight costs.</summary>
-    int SpotlightCost,
-    int SpotlightHours,
-    /// <summary>The user's currently spotlit post, if any.</summary>
-    Guid? SpotlightPostId,
-    DateTime? SpotlightUntil,
     /// <summary>Points one award gives away.</summary>
     int AwardCost,
     int AwardsLeftToday);
-
-public record SpotlightResult(int Balance, DateTime Until);
 
 public record AwardResult(int Balance, int AwardCount);
 
@@ -34,12 +26,8 @@ public class PointsController(AppDbContext db, PointsService points, Notificatio
         var userId = User.RequireUserId();
         var now = DateTime.UtcNow;
         var balance = await db.Users.Where(u => u.Id == userId).Select(u => u.Points).SingleAsync(ct);
-        var active = await db.Posts.Where(p => p.UserId == userId && p.SpotlightUntil > now)
-            .Select(p => new { p.Id, p.SpotlightUntil }).FirstOrDefaultAsync(ct);
-        var cost = PointsService.SpotlightCost(await points.RecentSpotlightsAsync(userId, now, ct));
         var awardsLeft = Math.Max(0, PointsService.AwardsPerDay - await points.AwardsGivenTodayAsync(userId, now, ct));
-        return new PointsDto(balance, cost, (int)PointsService.SpotlightDuration.TotalHours, active?.Id, active?.SpotlightUntil,
-            PointsService.AwardPoints, awardsLeft);
+        return new PointsDto(balance, PointsService.AwardPoints, awardsLeft);
     }
 
     /// <summary>Gives some of your points to the author of a post you think is great.</summary>
@@ -64,25 +52,6 @@ public class PointsController(AppDbContext db, PointsService points, Notificatio
                 $"You can give {PointsService.AwardsPerDay} awards a day."),
             _ => this.ProblemWithCode(StatusCodes.Status409Conflict, ErrorCodes.NotEnoughPoints,
                 $"An award costs {PointsService.AwardPoints} points; you have {r.Balance}."),
-        };
-    }
-
-    /// <summary>Spends points to boost one of your posts in the feeds for a day.</summary>
-    [HttpPost("posts/{postId:guid}/spotlight")]
-    public async Task<ActionResult<SpotlightResult>> Spotlight(Guid postId, CancellationToken ct)
-    {
-        var r = await points.SpotlightAsync(postId, User.RequireUserId(), ct);
-        return r.Problem switch
-        {
-            SpotlightProblem.None => new SpotlightResult(r.Balance, r.Until!.Value),
-            SpotlightProblem.NotFound => NotFound(),
-            SpotlightProblem.NotOwner => Forbid(),
-            SpotlightProblem.Hidden => this.ProblemWithCode(StatusCodes.Status409Conflict, ErrorCodes.PostHidden,
-                "Hidden posts can't be spotlit."),
-            SpotlightProblem.AlreadyActive => this.ProblemWithCode(StatusCodes.Status409Conflict, ErrorCodes.SpotlightActive,
-                "You already have a post in the spotlight."),
-            _ => this.ProblemWithCode(StatusCodes.Status409Conflict, ErrorCodes.NotEnoughPoints,
-                $"A spotlight costs {r.Cost} points; you have {r.Balance}."),
         };
     }
 }

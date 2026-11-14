@@ -64,13 +64,11 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             p.UpdatedAt,
             p.NsfwScore,
             p.NeedsReview,
-            p.SpotlightUntil,
             AwardCount = db.PointsLedger.Count(x => x.Kind == PointsKind.AwardReceived && x.PostId == p.Id),
             MyAward = currentUserId != null
                 && db.PointsLedger.Any(x => x.UserId == currentUserId && x.Kind == PointsKind.AwardGiven && x.PostId == p.Id),
         }).ToListAsync(ct);
 
-        var now = DateTime.UtcNow;
         return rows.Select(r => new PostDto(
             r.Id,
             new AuthorDto(r.UserId, r.UserName ?? "[deleted]", storage.AvatarUrl(r.AvatarKey)),
@@ -93,7 +91,6 @@ public class PostService(AppDbContext db, IMediaStorage storage, ILogger<PostSer
             r.UpdatedAt,
             forAdmin ? r.NsfwScore : null,
             forAdmin && r.NeedsReview,
-            r.SpotlightUntil > now ? r.SpotlightUntil : null,
             r.AwardCount,
             r.MyAward)).ToList();
     }

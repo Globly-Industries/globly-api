@@ -368,9 +368,6 @@ namespace Globly.Api.Data.Migrations
                     b.Property<int>("ReportCount")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime?>("SpotlightUntil")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -401,10 +398,7 @@ namespace Globly.Api.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Location"), "gist");
 
-                    b.HasIndex("SpotlightUntil")
-                        .HasFilter("\"SpotlightUntil\" IS NOT NULL");
-
-                    b.HasIndex("UserId", "SpotlightUntil");
+                    b.HasIndex("UserId");
 
                     b.ToTable("Posts");
                 });

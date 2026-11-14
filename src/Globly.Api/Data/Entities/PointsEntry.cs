@@ -4,7 +4,7 @@ public enum PointsKind
 {
     /// <summary>+1: someone liked the user's post. Once per voter per post, never taken back.</summary>
     LikeReceived = 0,
-    /// <summary>Spent on spotlighting a post.</summary>
+    /// <summary>Spent on a spotlight (a removed feature). Kept for history.</summary>
     Spotlight = 1,
     /// <summary>Given away as an award on someone else's post.</summary>
     AwardGiven = 2,

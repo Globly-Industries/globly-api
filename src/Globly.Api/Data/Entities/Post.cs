@@ -84,9 +84,6 @@ public class Post
     /// <summary>Failed scan attempts; the scanner gives up after a few.</summary>
     public int NsfwScanAttempts { get; set; }
 
-    /// <summary>Boosted in the feeds until then; bought with the author's points.</summary>
-    public DateTime? SpotlightUntil { get; set; }
-
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; set; }
 

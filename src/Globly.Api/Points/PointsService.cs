@@ -4,26 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Globly.Api.Points;
 
-public enum SpotlightProblem { None, NotFound, NotOwner, Hidden, AlreadyActive, NotEnoughPoints }
-
-public record SpotlightOutcome(SpotlightProblem Problem, int Balance, int Cost, DateTime? Until = null);
-
 public enum AwardProblem { None, NotFound, OwnPost, Hidden, AccountTooNew, AlreadyAwarded, DailyLimit, NotEnoughPoints }
 
 public record AwardOutcome(AwardProblem Problem, int Balance, int AwardCount = 0, Notification? Notification = null);
 
-/// <summary>Points: earned from likes on one's posts, spent on spotlighting a post.</summary>
+/// <summary>Points: earned from likes on one's posts, given away as awards.</summary>
 public class PointsService(AppDbContext db)
 {
-    public static readonly TimeSpan SpotlightDuration = TimeSpan.FromHours(24);
-    public const int SpotlightBaseCost = 20;
-
-    /// <summary>Each spotlight within this window makes the next one cost more.</summary>
-    public static readonly TimeSpan SpotlightCostWindow = TimeSpan.FromDays(7);
-    public const int SpotlightCostStep = 10;
-
-    public static int SpotlightCost(int recentSpotlights) => SpotlightBaseCost + SpotlightCostStep * recentSpotlights;
-
     /// <summary>Points an award moves from the giver to the post's author.</summary>
     public const int AwardPoints = 5;
     public const int AwardsPerDay = 3;
@@ -117,42 +104,5 @@ public class PointsService(AppDbContext db)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.Points, u => u.Points + 1), ct);
         await tx.CommitAsync(ct);
     }
-
-    public async Task<int> RecentSpotlightsAsync(string userId, DateTime now, CancellationToken ct)
-    {
-        var since = now - SpotlightCostWindow;
-        return await db.PointsLedger.CountAsync(x => x.UserId == userId && x.Kind == PointsKind.Spotlight && x.CreatedAt >= since, ct);
-    }
-
-    /// <summary>Spends points to spotlight one of the user's posts. One spotlight at a time.</summary>
-    public async Task<SpotlightOutcome> SpotlightAsync(Guid postId, string userId, CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-
-        // Locks the user's row, so two spotlights at once can't both pass the checks below.
-        var balance = await db.Database
-            .SqlQuery<int>($"""SELECT "Points" AS "Value" FROM "AspNetUsers" WHERE "Id" = {userId} FOR UPDATE""")
-            .SingleAsync(ct);
-        var cost = SpotlightCost(await RecentSpotlightsAsync(userId, now, ct));
-
-        var post = await db.Posts.FirstOrDefaultAsync(p => p.Id == postId, ct);
-        SpotlightProblem problem;
-        if (post is null) problem = SpotlightProblem.NotFound;
-        else if (post.UserId != userId) problem = SpotlightProblem.NotOwner;
-        else if (post.IsHidden) problem = SpotlightProblem.Hidden;
-        else if (await db.Posts.AnyAsync(p => p.UserId == userId && p.SpotlightUntil > now, ct)) problem = SpotlightProblem.AlreadyActive;
-        else if (balance < cost) problem = SpotlightProblem.NotEnoughPoints;
-        else problem = SpotlightProblem.None;
-        if (problem != SpotlightProblem.None) return new SpotlightOutcome(problem, balance, cost);
-
-        post!.SpotlightUntil = now + SpotlightDuration;
-        db.PointsLedger.Add(new PointsEntry { UserId = userId, Amount = -cost, Kind = PointsKind.Spotlight, PostId = postId });
-        await db.SaveChangesAsync(ct);
-        await db.Users.Where(u => u.Id == userId)
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Points, u => u.Points - cost), ct);
-        await tx.CommitAsync(ct);
-
-        return new SpotlightOutcome(SpotlightProblem.None, balance - cost, cost, post.SpotlightUntil);
-    }
 }
+

@@ -34,8 +34,6 @@ public record PostDto(
     float? NsfwScore = null,
     /// <summary>Admins only: the NSFW filter queued this visible post for review.</summary>
     bool NeedsReview = false,
-    /// <summary>Set while the author has the post in the spotlight (boosted in feeds, labelled).</summary>
-    DateTime? SpotlightUntil = null,
     int AwardCount = 0,
     /// <summary>Whether the caller gave this post an award.</summary>
     bool MyAward = false,

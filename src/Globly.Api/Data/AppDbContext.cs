@@ -37,9 +37,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : IdentityDbCo
             e.HasIndex(p => p.Location).HasMethod("gist");
             e.HasIndex(p => p.CreatedAt);
             e.HasIndex(p => p.IsHidden);
-            e.HasIndex(p => new { p.UserId, p.SpotlightUntil });
-            // Spotlit posts always join the feed candidates.
-            e.HasIndex(p => p.SpotlightUntil).HasFilter("\"SpotlightUntil\" IS NOT NULL");
 
             e.HasOne(p => p.User).WithMany(u => u.Posts)
                 .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
